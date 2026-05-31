@@ -53,14 +53,17 @@ Content of file four
 
 ## Project bake
 
-Add two frontmatter fields to any notes you want to compile as a project:
+Add a `bake` map to any note's frontmatter, with one entry per project the note belongs to. The value is its position in that project:
 
 ```yaml
 ---
-bake-project: my-novel
-bake-order: 3
+bake:
+  my-novel: 3
+  another-project: 1
 ---
 ```
+
+A note can belong to any number of projects at independent positions.
 
 Run **Bake project**, pick your project from the dropdown, reorder scenes with ↑/↓ if needed, and hit Bake. The modal writes `bake-order` back to each note's frontmatter so the order is saved for next time.
 

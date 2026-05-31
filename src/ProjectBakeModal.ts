@@ -104,7 +104,7 @@ export class ProjectBakeModal extends Modal {
         btn.addClass('mod-muted');
 
         // Write bake-order back to frontmatter for any reordering done in the modal
-        await writeSceneOrders(app, scenes);
+        await writeSceneOrders(app, selectedProject, scenes);
 
         const baked = await bakeProject(app, scenes, settings);
         const folder = currentFile?.parent?.path ? currentFile.parent.path + '/' : '';

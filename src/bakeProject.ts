@@ -9,6 +9,12 @@ export interface ProjectScene {
   hasOrder: boolean;
 }
 
+function getBakeMap(fm: Record<string, unknown>): Record<string, number> | null {
+  const raw = fm['bake'];
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  return raw as Record<string, number>;
+}
+
 export function getProjectScenes(app: App, projectName: string): ProjectScene[] {
   const scenes: ProjectScene[] = [];
 
@@ -16,10 +22,10 @@ export function getProjectScenes(app: App, projectName: string): ProjectScene[] 
     const fm = app.metadataCache.getFileCache(file)?.frontmatter;
     if (!fm) continue;
 
-    const proj = fm['bake-project'];
-    if (!proj || String(proj).trim() !== projectName.trim()) continue;
+    const bakeMap = getBakeMap(fm);
+    if (!bakeMap || !(projectName in bakeMap)) continue;
 
-    const rawOrder = fm['bake-order'];
+    const rawOrder = bakeMap[projectName];
     const order = rawOrder != null ? Number(rawOrder) : Infinity;
     scenes.push({ file, order, hasOrder: rawOrder != null });
   }
@@ -32,20 +38,24 @@ export function getKnownProjects(app: App): string[] {
   const projects = new Set<string>();
   for (const file of app.vault.getMarkdownFiles()) {
     const fm = app.metadataCache.getFileCache(file)?.frontmatter;
-    const proj = fm?.['bake-project'];
-    if (proj) projects.add(String(proj).trim());
+    const bakeMap = fm ? getBakeMap(fm) : null;
+    if (bakeMap) Object.keys(bakeMap).forEach((p) => projects.add(p));
   }
   return [...projects].sort();
 }
 
 export async function writeSceneOrders(
   app: App,
+  projectName: string,
   scenes: ProjectScene[]
 ): Promise<void> {
   for (let i = 0; i < scenes.length; i++) {
     const scene = scenes[i];
     await app.fileManager.processFrontMatter(scene.file, (fm) => {
-      fm['bake-order'] = i + 1;
+      if (!fm['bake'] || typeof fm['bake'] !== 'object' || Array.isArray(fm['bake'])) {
+        fm['bake'] = {};
+      }
+      (fm['bake'] as Record<string, number>)[projectName] = i + 1;
     });
     scene.order = i + 1;
     scene.hasOrder = true;
