@@ -2,10 +2,10 @@
   <img align="center" width="175" src="https://github.com/mgmeyers/obsidian-easy-bake/blob/master/assets/logo.png?raw=true">
 </p>
 
-<h1 align="center">Easy Bake</h1>
+<h1 align="center">Bripey Bake</h1>
 
 <p align="center">
-Compile your Obsidian notes into larger documents. This plugin is focused on simplicity. For more complex compilation scenarios, try <a href="https://github.com/kevboh/longform">kevboh's longform plugin</a>.
+Compile your Obsidian notes into larger documents. Focused on simplicity, with community improvements baked in. For more complex compilation scenarios, try <a href="https://github.com/kevboh/longform">kevboh's longform plugin</a>.
 </p>
 
 <br>
@@ -14,9 +14,7 @@ Compile your Obsidian notes into larger documents. This plugin is focused on sim
 
 Activate the plugin using the `Bake current file` command in [Obsidian's command palette](https://help.obsidian.md/Plugins/Command+palette).
 
-<img width="500" src="https://github.com/mgmeyers/obsidian-easy-bake/blob/master/assets/screenshot.png?raw=true">
-
-Links and embeds that exist on their own line will be copied into the compiled document. Inline links will be replaced with the link's text. This process is recursive, meaning links in linked files will also be copied into the final document.
+Links and embeds that exist on their own line will be copied into the compiled document. Inline links will be replaced with the link's text. This process is recursive — links in linked files are also copied into the final document.
 
 For example,
 
@@ -47,3 +45,31 @@ This is an inline link.
 
 Content of file four
 ```
+
+## Settings
+
+All settings are available in the bake modal when you run the command.
+
+| Setting | Default | Description |
+|---|---|---|
+| Bake embedded markdown | on | Include content of `![[embedded files]]` when on their own line |
+| Bake links | on | Include content of `[[links]]` when on their own line |
+| Bake links and embeds in lists | on | Also bake links/embeds that occupy an entire list bullet |
+| Bake file links | on | Convert `![[image.png]]` to an absolute `file://` path |
+| Adjust heading levels | on | Shift headings in embedded files so they nest correctly under the heading that contains the link |
+| Skip Excalidraw embeds | on | Leave `.excalidraw` links as-is rather than trying to embed them as text |
+| Preserve inline links | on | Keep `[[links]]` that appear inline without display text intact (useful for citation-style references) |
+| Remove tasks from output | off | Strip `- [ ]` and `- [x]` task lines from the compiled document |
+| Remove tags from output | off | Strip `#tags` from the compiled document |
+
+## Improvements over the original
+
+This fork incorporates the best ideas from the community:
+
+- **Footnote reindexing** — footnotes across multiple merged files are renumbered globally so they never collide
+- **Heading level adjustment** — embedded files' headings shift down to nest cleanly under the heading that contains their link
+- **Excalidraw exclusion** — `.excalidraw` files are skipped rather than breaking the output
+- **Preserve inline links** — citation-style `[[links]]` without display text are left intact
+- **Task & tag removal** — optional cleanup of tasks and tags for clean export
+- **Block-embed fix** — fixes a bug where partial `![[file#^blockid]]` references could corrupt the output
+- **Better error messages** — recursive bake failures report which file caused the problem

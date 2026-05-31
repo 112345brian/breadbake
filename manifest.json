@@ -1,10 +1,10 @@
 {
-	"id": "easy-bake",
-	"name": "Easy Bake",
-	"version": "1.1.0",
+	"id": "bripey-bake",
+	"name": "Bripey Bake",
+	"version": "1.2.0",
 	"minAppVersion": "0.15.0",
-	"description": "Easily compile many Obsidian notes down to a single file.",
-	"author": "mgmeyers",
-	"authorUrl": "https://github.com/mgmeyers",
+	"description": "Compile Obsidian notes into a single file, with footnote reindexing, heading adjustment, and clean export options.",
+	"author": "112345brian",
+	"authorUrl": "https://github.com/112345brian",
 	"isDesktopOnly": false
 }
