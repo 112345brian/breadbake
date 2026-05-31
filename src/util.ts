@@ -81,6 +81,13 @@ export function reindexNotes(text: string, next: () => string): string {
   });
 }
 
+export function stripDataviewBlocks(text: string): string {
+  return text
+    .replace(/```dataview(?:js)?\n[\s\S]*?```/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 export function removeTasks(text: string): string {
   return text.replace(/\s*- \[[ xX]] .*(\n|$)/gm, '\n');
 }

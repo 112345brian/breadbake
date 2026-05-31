@@ -19,6 +19,7 @@ import {
   removeTasks,
   sanitizeBakedContent,
   stripComments,
+  stripDataviewBlocks,
   stripFirstBullet,
 } from './util';
 import { ResolutionMap } from './ambiguity';
@@ -235,6 +236,7 @@ export async function bake(
   if (effectiveSettings.removeTasks) text = removeTasks(text);
   if (effectiveSettings.removeTags) text = removeTags(text);
   if (effectiveSettings.stripComments) text = stripComments(text);
+  if (effectiveSettings.dataviewHandling === 'strip') text = stripDataviewBlocks(text);
   if (effectiveSettings.convertWikilinks) text = convertWikilinksToMarkdown(text);
 
   return text;

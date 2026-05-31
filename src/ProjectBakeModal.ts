@@ -1,15 +1,17 @@
 import { App, Modal, Notice, Setting, TFile } from 'obsidian';
 import { BakeSettings } from './main';
+import EasyBake from './main';
 import { ProjectScene, bakeProject, getKnownProjects, getProjectScenes, writeSceneOrders } from './bakeProject';
 import { AmbiguityModal } from './AmbiguityModal';
 import { ResolutionMap, autoResolve, detectAmbiguities } from './ambiguity';
 import { DryRunModal } from './DryRunModal';
 import { exportImages } from './imageExport';
+import { applyTemplates } from './watcher';
 import { getWordCount, mergeTagsIntoFrontmatter } from './util';
-import { validateHeadings } from './validate';
+import { runAllValidations } from './validate';
 
 export class ProjectBakeModal extends Modal {
-  constructor(app: App, plugin: { settings: BakeSettings; saveSettings(): Promise<void> }) {
+  constructor(app: App, private plugin: EasyBake) {
     super(app);
 
     const { settings } = plugin;
@@ -99,6 +101,12 @@ export class ProjectBakeModal extends Modal {
       const defaultName = selectedProject.toLowerCase().replace(/\s+/g, '-') + '.baked';
       let outputName = defaultName;
 
+      let watchAfterBake = false;
+      new Setting(el)
+        .setName('Watch for changes')
+        .setDesc('Automatically rebake when source files are modified.')
+        .addToggle((t) => t.setValue(false).onChange((v) => (watchAfterBake = v)));
+
       // --- Dry run ---
       el.createEl('button', { text: 'Dry run' }).addEventListener('click', () => {
         new DryRunModal(app, 'project', null, scenes, settings, () => {}).open();
@@ -170,6 +178,9 @@ export class ProjectBakeModal extends Modal {
           existing = await vault.create(nextPath, baked);
         }
 
+        // Template injection
+        baked = await applyTemplates(app, baked, settings);
+
         // Image export
         if (settings.exportImages && existing instanceof TFile) {
           baked = await exportImages(app, baked, existing.parent?.path ?? '', outputName);
@@ -180,17 +191,23 @@ export class ProjectBakeModal extends Modal {
           app.workspace.getLeaf('tab').openFile(existing);
         }
 
-        const warnings = validateHeadings(baked);
+        if (watchAfterBake && existing instanceof TFile) {
+          const sourceFiles = new Set(scenes.map((s) => s.file));
+          this.plugin.watcher.add(
+            { outputPath: nextPath, mode: 'project', projectName: selectedProject, settings: { ...settings } },
+            sourceFiles
+          );
+        }
+
+        const warnings = runAllValidations(baked).filter(
+          (w) => w.kind !== 'dataview-block' || settings.dataviewHandling === 'warn'
+        );
         if (warnings.length > 0) {
           this.contentEl.empty();
-          this.titleEl.setText('Baked — heading warnings');
-          this.contentEl.createEl('p', { text: 'The baked file was saved, but the heading structure may not be idiomatic:' });
+          this.titleEl.setText('Baked — warnings');
+          this.contentEl.createEl('p', { text: 'The baked file was saved with the following warnings:' });
           const list = this.contentEl.createEl('ul');
           warnings.forEach((w) => list.createEl('li', { text: w.message }));
-          this.contentEl.createEl('p', {
-            cls: 'mod-muted',
-            text: 'Check the source files for skipped heading levels or multiple H1s, then re-bake.',
-          });
           this.modalEl.createDiv('modal-button-container', (el2) => {
             el2.createEl('button', { text: 'Close', cls: 'mod-cta' }).addEventListener('click', () => this.close());
           });

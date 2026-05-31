@@ -1,7 +1,7 @@
 import { App, TFile, parseLinktext } from 'obsidian';
 import { BakeSettings } from './main';
 import { bake } from './bake';
-import { reindexNotes, sanitizeBakedContent } from './util';
+import { reindexNotes, sanitizeBakedContent, stripDataviewBlocks } from './util';
 import { ResolutionMap } from './ambiguity';
 
 export interface BreadcrumbNode {
@@ -19,6 +19,55 @@ function getDownLinks(app: App, file: TFile, downField: string): TFile[] {
   return fmLinks
     .map((l) => app.metadataCache.getFirstLinkpathDest(l.link, file.path))
     .filter((f): f is TFile => f != null && f.extension === 'md');
+}
+
+/**
+ * If any of the given files define next/prev relationships among themselves,
+ * sort them into linked-list order. Files not connected by next/prev retain
+ * their original relative order at the end of the result.
+ */
+function sortByNextPrev(app: App, files: TFile[], nextField: string): TFile[] {
+  if (files.length <= 1) return files;
+
+  const fileSet = new Set(files.map((f) => f.path));
+  const nextMap = new Map<string, TFile>(); // file.path → its next sibling
+  const hasPrev = new Set<string>();         // paths that are pointed to by a 'next'
+
+  for (const file of files) {
+    const fmLinks = app.metadataCache.getFileCache(file)?.frontmatterLinks ?? [];
+    for (const link of fmLinks) {
+      if (link.key !== nextField) continue;
+      const target = app.metadataCache.getFirstLinkpathDest(link.link, file.path);
+      if (target && fileSet.has(target.path)) {
+        nextMap.set(file.path, target);
+        hasPrev.add(target.path);
+      }
+    }
+  }
+
+  // No next/prev relationships among these siblings — keep original order
+  if (nextMap.size === 0) return files;
+
+  // Start from the file(s) with no incoming 'next' pointer
+  const heads = files.filter((f) => !hasPrev.has(f.path));
+  const result: TFile[] = [];
+  const visited = new Set<string>();
+
+  for (const head of heads) {
+    let cur: TFile | undefined = head;
+    while (cur && !visited.has(cur.path)) {
+      result.push(cur);
+      visited.add(cur.path);
+      cur = nextMap.get(cur.path);
+    }
+  }
+
+  // Append anything not reached by the chain (disconnected files)
+  for (const file of files) {
+    if (!visited.has(file.path)) result.push(file);
+  }
+
+  return result;
 }
 
 // Read MOC-style list wikilinks from the file body (for combination mode)
@@ -67,6 +116,9 @@ export function buildBreadcrumbTree(
       }
     }
   }
+
+  // Re-order by next/prev chain if any siblings define it
+  childFiles = sortByNextPrev(app, childFiles, settings.breadcrumbNextField);
 
   const children = childFiles
     .filter((f) => !newAncestors.has(f))
@@ -129,6 +181,7 @@ export async function bakeBreadcrumbTree(
       }
     }
 
+    if (settings.dataviewHandling === 'strip') content = stripDataviewBlocks(content);
     if (content.trim()) parts.push(content);
 
     for (const child of node.children) {
@@ -136,7 +189,10 @@ export async function bakeBreadcrumbTree(
       if (childContent.trim()) parts.push(childContent);
     }
 
-    return parts.join('\n\n');
+    const sep = settings.sectionSeparator
+      ? `\n\n${settings.sectionSeparator}\n\n`
+      : '\n\n';
+    return parts.join(sep);
   }
 
   return bakeNode(rootNode);

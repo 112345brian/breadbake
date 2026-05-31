@@ -6,8 +6,9 @@ import { ResolutionMap, autoResolve, collectBakeTargets, detectAmbiguities } fro
 import { DryRunModal } from './DryRunModal';
 import { exportImages } from './imageExport';
 import EasyBake from './main';
+import { applyTemplates } from './watcher';
 import { getWordCount, mergeTagsIntoFrontmatter } from './util';
-import { validateHeadings } from './validate';
+import { runAllValidations } from './validate';
 
 function disableBtn(btn: HTMLButtonElement) {
   btn.removeClass('mod-cta');
@@ -194,6 +195,51 @@ export class BakeModal extends Modal {
       );
 
     new Setting(contentEl)
+      .setName('Section separator')
+      .setDesc('Text inserted between baked sections (e.g. ---). Leave empty for none.')
+      .addText((text) =>
+        text.setValue(settings.sectionSeparator).onChange((value) => {
+          settings.sectionSeparator = value;
+          plugin.saveSettings();
+        })
+      );
+
+    new Setting(contentEl)
+      .setName('Dataview blocks')
+      .setDesc('How to handle Dataview/DataviewJS code blocks in the output.')
+      .addDropdown((drop) =>
+        drop
+          .addOption('keep', 'Keep as-is')
+          .addOption('strip', 'Strip')
+          .addOption('warn', 'Warn after baking')
+          .setValue(settings.dataviewHandling)
+          .onChange((value) => {
+            settings.dataviewHandling = value as 'keep' | 'strip' | 'warn';
+            plugin.saveSettings();
+          })
+      );
+
+    new Setting(contentEl)
+      .setName('Header template')
+      .setDesc('Note to prepend to the output (path or wikilink without brackets).')
+      .addText((text) =>
+        text.setPlaceholder('Templates/Header').setValue(settings.headerTemplate).onChange((value) => {
+          settings.headerTemplate = value;
+          plugin.saveSettings();
+        })
+      );
+
+    new Setting(contentEl)
+      .setName('Footer template')
+      .setDesc('Note to append to the output.')
+      .addText((text) =>
+        text.setPlaceholder('Templates/Footer').setValue(settings.footerTemplate).onChange((value) => {
+          settings.footerTemplate = value;
+          plugin.saveSettings();
+        })
+      );
+
+    new Setting(contentEl)
       .setName('Map of contents mode')
       .setDesc(
         'Treat bulleted wikilinks as a document outline. Each link becomes a section heading whose level is derived from its list indentation (top-level → H2, one indent → H3, …). The linked file\'s own H1 shifts to that level; if it has none, the filename is used as the heading.'
@@ -246,12 +292,15 @@ export class BakeModal extends Modal {
 
         if (outputFolder) outputFolder += '/';
 
+        let watchAfterBake = false;
+        new Setting(el)
+          .setName('Watch for changes')
+          .setDesc('Automatically rebake when source files are modified.')
+          .addToggle((t) => t.setValue(false).onChange((v) => (watchAfterBake = v)));
+
         // --- Dry run ---
         el.createEl('button', { text: 'Dry run' }).addEventListener('click', () => {
-          new DryRunModal(this.app, 'link', file, null, settings, () => {
-            this.close();
-            // Re-open the bake modal via the plugin command
-          }).open();
+          new DryRunModal(this.app, 'link', file, null, settings, () => this.close()).open();
         });
 
         // --- Copy to clipboard ---
@@ -317,7 +366,10 @@ export class BakeModal extends Modal {
               existing = await vault.create(nextPath, baked);
             }
 
-            // Image export (must run after file is written so we know the output path)
+            // Template injection
+            baked = await applyTemplates(this.app, baked, settings);
+
+            // Image export
             if (settings.exportImages && existing instanceof TFile) {
               baked = await exportImages(this.app, baked, existing.parent?.path ?? '', outputName);
               await vault.modify(existing, baked);
@@ -327,10 +379,18 @@ export class BakeModal extends Modal {
               this.app.workspace.getLeaf('tab').openFile(existing);
             }
 
-            const warnings = validateHeadings(baked);
+            // Start watching if requested
+            if (watchAfterBake && existing instanceof TFile) {
+              const sourceFiles = await collectBakeTargets(this.app, file, new Set(), settings);
+              plugin.watcher.add({ outputPath: nextPath, mode: 'link', rootFile: file, settings: { ...settings } }, sourceFiles);
+            }
+
+            const warnings = runAllValidations(baked).filter(
+              (w) => w.kind !== 'dataview-block' || settings.dataviewHandling === 'warn'
+            );
             if (warnings.length > 0) {
               this.showWarnings(warnings.map((w) => w.message));
-              return; // keep modal open so user can read warnings
+              return;
             }
           }
 

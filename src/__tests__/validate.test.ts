@@ -1,4 +1,4 @@
-import { validateHeadings } from '../validate';
+import { runAllValidations, validateDataview, validateHeadings } from '../validate';
 
 describe('validateHeadings', () => {
   it('returns no warnings for a well-formed document', () => {
@@ -60,7 +60,6 @@ describe('validateHeadings', () => {
   });
 
   it('does not flag going back up the hierarchy', () => {
-    // H3 → H2 is valid: it is a sibling section at a higher level
     const doc = `
 ## Section A
 
@@ -82,5 +81,38 @@ describe('validateHeadings', () => {
     const warnings = validateHeadings(doc);
     expect(warnings).toHaveLength(2);
     expect(warnings.map((w) => w.kind)).toEqual(['skipped-level', 'multiple-h1']);
+  });
+});
+
+describe('validateDataview', () => {
+  it('returns no warnings for a document with no dataview blocks', () => {
+    expect(validateDataview('Just text.\n\n```js\ncode\n```')).toEqual([]);
+  });
+
+  it('flags a dataview block', () => {
+    const doc = 'Some text.\n\n```dataview\nLIST\n```\n\nMore text.';
+    const warnings = validateDataview(doc);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].kind).toBe('dataview-block');
+  });
+
+  it('flags a dataviewjs block', () => {
+    const doc = '```dataviewjs\ndv.list([])\n```';
+    expect(validateDataview(doc)[0].kind).toBe('dataview-block');
+  });
+
+  it('flags multiple dataview blocks', () => {
+    const doc = '```dataview\nLIST\n```\n\n```dataviewjs\ndv.list()\n```';
+    expect(validateDataview(doc)).toHaveLength(2);
+  });
+});
+
+describe('runAllValidations', () => {
+  it('combines heading and dataview warnings', () => {
+    const doc = `# Title\n\n### Skipped\n\n\`\`\`dataview\nLIST\n\`\`\``;
+    const warnings = runAllValidations(doc);
+    const kinds = warnings.map((w) => w.kind);
+    expect(kinds).toContain('skipped-level');
+    expect(kinds).toContain('dataview-block');
   });
 });

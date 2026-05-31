@@ -123,7 +123,11 @@ Before baking, the modal shows the detected tree with heading-level badges:
 
 Heading levels are determined by depth: depth 1 → H2, depth 2 → H3, and so on. A file's existing H1 is shifted to the right level; if it has no H1, the filename (or frontmatter `title`) is injected.
 
-The Breadcrumbs plugin is **not required** — any frontmatter field name works. **Combination mode** also merges body wikilinks into the child list so you can mix frontmatter structure with MOC-style body lists.
+The Breadcrumbs plugin is **not required** — any frontmatter field name works.
+
+**`next`/`prev` ordering** — if sibling notes define `next`/`prev` relationships among themselves, they are sorted by following that linked list rather than relying on array order in `down`. The field name is configurable (default: `next`).
+
+**Combination mode** — also merges body wikilinks into the child list so you can mix frontmatter structure with MOC-style body lists.
 
 ---
 
@@ -185,11 +189,19 @@ bake-settings:
 
 ## Other features
 
-**Dry run** — a button in the bake modal that shows which files would be included, their nesting depth, and an estimated word count, without writing anything. A "Proceed to bake" button continues to the actual bake.
+**Dry run** — shows which files would be included, their nesting depth, and an estimated word count, without writing anything.
 
-**Copy to clipboard** — bakes in memory and copies to the clipboard without writing a file. Useful for pasting into Google Docs, email, etc.
+**Copy to clipboard** — bakes in memory and copies without writing a file. Useful for pasting into Google Docs, email, etc.
 
-**Heading validation** — after every bake, the output is checked for common heading issues (multiple H1s, skipped levels). If any are found the modal stays open and lists them rather than silently closing.
+**Watch mode** — a toggle in the bake modal. After baking, the plugin watches all source files for changes and automatically rebakes (debounced 2s) whenever one is modified. Run **Stop watching (all)** from the command palette to cancel. Works with all three bake modes.
+
+**Section separator** — configurable text inserted between baked sections (e.g. `---`). Leave empty for none.
+
+**Dataview blocks** — three options: keep as-is, strip from output, or warn after baking. Defaults to warn, since Dataview queries render as raw code outside Obsidian.
+
+**Template injection** — specify a header and/or footer note. Their content is prepended/appended to the baked output.
+
+**Heading validation** — after every bake, the output is checked for multiple H1s and skipped heading levels. Warnings are shown in the modal rather than silently closing.
 
 **Footnote reindexing** — footnote references across all merged files are renumbered globally so they never collide.
 

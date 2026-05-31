@@ -3,6 +3,7 @@ import { Plugin } from 'obsidian';
 import { BakeModal } from './BakeModal';
 import { ProjectBakeModal } from './ProjectBakeModal';
 import { BreadcrumbBakeModal } from './BreadcrumbBakeModal';
+import { WatchManager } from './watcher';
 import { EasyBakeApi } from './api';
 
 export interface BakeSettings {
@@ -24,7 +25,12 @@ export interface BakeSettings {
   frontmatterMergeFields: string;
   exportImages: boolean;
   breadcrumbDownField: string;
+  breadcrumbNextField: string;
   breadcrumbCombineWithMoc: boolean;
+  sectionSeparator: string;
+  dataviewHandling: 'keep' | 'strip' | 'warn';
+  headerTemplate: string;
+  footerTemplate: string;
 }
 
 const DEFAULT_SETTINGS: BakeSettings = {
@@ -46,11 +52,17 @@ const DEFAULT_SETTINGS: BakeSettings = {
   frontmatterMergeFields: 'tags',
   exportImages: false,
   breadcrumbDownField: 'down',
+  breadcrumbNextField: 'next',
   breadcrumbCombineWithMoc: false,
+  sectionSeparator: '',
+  dataviewHandling: 'warn',
+  headerTemplate: '',
+  footerTemplate: '',
 };
 
 export default class EasyBake extends Plugin {
   settings: BakeSettings;
+  watcher: WatchManager;
 
   public api = new EasyBakeApi(this);
 
@@ -66,8 +78,13 @@ export default class EasyBake extends Plugin {
     return this.app.workspace.activeEditor?.file;
   }
 
+  onunload() {
+    this.watcher?.unload();
+  }
+
   async onload() {
     await this.loadSettings();
+    this.watcher = new WatchManager(this.app);
 
     this.addCommand({
       id: 'bake-file',
@@ -94,6 +111,19 @@ export default class EasyBake extends Plugin {
         const file = this.activeMarkdownFile;
         if (checking || !file) return !!file;
         new BreadcrumbBakeModal(this.app, file, this.settings, this).open();
+      },
+    });
+
+    this.addCommand({
+      id: 'stop-watching',
+      name: 'Stop watching (all)',
+      callback: () => {
+        const watched = this.watcher.list();
+        if (watched.length === 0) {
+          new (require('obsidian').Notice)('No active watches.');
+          return;
+        }
+        this.watcher.removeAll();
       },
     });
   }

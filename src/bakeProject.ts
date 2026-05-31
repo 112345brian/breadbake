@@ -1,7 +1,7 @@
 import { App, TFile } from 'obsidian';
 import { BakeSettings } from './main';
 import { bake } from './bake';
-import { ensureHeading, isEffectivelyEmpty, reindexNotes, sanitizeBakedContent } from './util';
+import { ensureHeading, isEffectivelyEmpty, reindexNotes, sanitizeBakedContent, stripDataviewBlocks } from './util';
 import { ResolutionMap } from './ambiguity';
 
 export interface ProjectScene {
@@ -124,8 +124,12 @@ export async function bakeProject(
       baked = ensureHeading(baked, title);
     }
 
+    if (settings.dataviewHandling === 'strip') baked = stripDataviewBlocks(baked);
     parts.push(baked);
   }
 
-  return parts.join('\n\n');
+  const sep = settings.sectionSeparator
+    ? `\n\n${settings.sectionSeparator}\n\n`
+    : '\n\n';
+  return parts.join(sep);
 }

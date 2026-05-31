@@ -1,6 +1,6 @@
-export type WarningKind = 'multiple-h1' | 'skipped-level';
+export type WarningKind = 'multiple-h1' | 'skipped-level' | 'dataview-block';
 
-export interface HeadingWarning {
+export interface BakeWarning {
   kind: WarningKind;
   message: string;
   line: number;
@@ -12,11 +12,9 @@ export interface HeadingWarning {
  * - No skipped levels going deeper (e.g. H2 → H4 without an H3)
  *
  * Going back up the hierarchy (H4 → H2) is always valid — that's a sibling section.
- *
- * Returns an array of warnings, empty if the document is well-formed.
  */
-export function validateHeadings(text: string): HeadingWarning[] {
-  const warnings: HeadingWarning[] = [];
+export function validateHeadings(text: string): BakeWarning[] {
+  const warnings: BakeWarning[] = [];
   const lines = text.split('\n');
 
   let h1Count = 0;
@@ -50,4 +48,29 @@ export function validateHeadings(text: string): HeadingWarning[] {
   }
 
   return warnings;
+}
+
+/**
+ * Detects Dataview/DataviewJS code blocks in the output.
+ * These render as raw code in any Markdown renderer that isn't Obsidian.
+ */
+export function validateDataview(text: string): BakeWarning[] {
+  const warnings: BakeWarning[] = [];
+  const lines = text.split('\n');
+
+  for (let i = 0; i < lines.length; i++) {
+    if (/^```dataview(?:js)?$/.test(lines[i].trim())) {
+      warnings.push({
+        kind: 'dataview-block',
+        message: `Line ${i + 1}: Dataview query block found — will appear as raw code outside Obsidian`,
+        line: i + 1,
+      });
+    }
+  }
+
+  return warnings;
+}
+
+export function runAllValidations(text: string): BakeWarning[] {
+  return [...validateHeadings(text), ...validateDataview(text)];
 }
