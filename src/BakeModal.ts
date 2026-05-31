@@ -40,7 +40,7 @@ export class BakeModal extends Modal {
   }
 
   onOpen() {
-    this.titleEl.setText('Bake file');
+    this.titleEl.setText('BreadBake');
     this.modalEl.addClass('easy-bake-modal');
     this.modalEl.style.width = 'min(1080px, 94vw)';
     this.modalEl.style.maxWidth = 'none';

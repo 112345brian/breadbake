@@ -1,9 +1,9 @@
 {
-	"id": "bripey-bake",
-	"name": "Bripey Bake",
+	"id": "breadbake",
+	"name": "BreadBake",
 	"version": "1.2.0",
 	"minAppVersion": "0.15.0",
-	"description": "Compile Obsidian notes into a single file, with footnote reindexing, heading adjustment, and clean export options.",
+	"description": "Compile Obsidian notes into a single document — link bake, breadcrumb bake, project bake, and frontmatter outline bake.",
 	"author": "112345brian",
 	"authorUrl": "https://github.com/112345brian",
 	"isDesktopOnly": false
