@@ -14,6 +14,7 @@ export interface BakeSettings {
   preserveInlineLinks: boolean;
   removeTasks: boolean;
   removeTags: boolean;
+  structuredMode: boolean;
 }
 
 const DEFAULT_SETTINGS: BakeSettings = {
@@ -26,6 +27,7 @@ const DEFAULT_SETTINGS: BakeSettings = {
   preserveInlineLinks: true,
   removeTasks: false,
   removeTags: false,
+  structuredMode: false,
 };
 
 export default class EasyBake extends Plugin {

@@ -1,7 +1,7 @@
 import { App, TFile } from 'obsidian';
 import { BakeSettings } from './main';
 import { bake } from './bake';
-import { reindexNotes, sanitizeBakedContent } from './util';
+import { ensureHeading, isEffectivelyEmpty, reindexNotes, sanitizeBakedContent } from './util';
 
 export interface ProjectScene {
   file: TFile;
@@ -108,6 +108,15 @@ export async function bakeProject(
     } catch (e) {
       throw new Error(`Error baking scene '${scene.file.path}': ${(e as Error).message}`);
     }
+
+    if (settings.structuredMode) {
+      if (isEffectivelyEmpty(baked)) continue;
+      const title =
+        app.metadataCache.getFileCache(scene.file)?.frontmatter?.title ||
+        scene.file.basename;
+      baked = ensureHeading(baked, title);
+    }
+
     parts.push(baked);
   }
 

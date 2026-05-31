@@ -139,6 +139,18 @@ export class BakeModal extends Modal {
         })
       );
 
+    new Setting(contentEl)
+      .setName('Structured mode')
+      .setDesc(
+        'Resolve ambiguous structure: inject a heading for any embedded file that lacks one (using its frontmatter title or filename), and skip files that are empty after processing.'
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(settings.structuredMode).onChange((value) => {
+          settings.structuredMode = value;
+          plugin.saveSettings();
+        })
+      );
+
     new Setting(contentEl).setName('Output file name').then((setting) => {
       new Setting(contentEl).then((setting) => {
         setting.addButton((btn) =>

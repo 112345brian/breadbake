@@ -10,7 +10,9 @@ import {
 import { BakeSettings } from './main';
 import {
   applyIndent,
+  ensureHeading,
   extractSubpath,
+  isEffectivelyEmpty,
   reindexNotes,
   removeTags,
   removeTasks,
@@ -151,6 +153,14 @@ export async function bake(
       );
     } catch (e) {
       throw new Error(`Error baking '${linkedFile.path}': ${(e as Error).message}`);
+    }
+
+    if (settings.structuredMode) {
+      if (isEffectivelyEmpty(baked)) continue;
+      const title =
+        app.metadataCache.getFileCache(linkedFile)?.frontmatter?.title ||
+        linkedFile.basename;
+      baked = ensureHeading(baked, title);
     }
 
     if (settings.adjustHeadingLevels) {

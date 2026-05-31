@@ -51,6 +51,16 @@ export function sanitizeBakedContent(text: string) {
   return stripBlockId(stripFrontmatter(text));
 }
 
+export function ensureHeading(text: string, title: string): string {
+  const trimmed = text.trimStart();
+  if (/^# /m.test(trimmed.split('\n')[0])) return text;
+  return `# ${title}\n\n${text}`;
+}
+
+export function isEffectivelyEmpty(text: string): boolean {
+  return text.trim().length === 0;
+}
+
 export function reindexNotes(text: string, next: () => string): string {
   const references: Record<string, string> = {};
 

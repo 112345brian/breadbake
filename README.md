@@ -93,6 +93,7 @@ All settings are available in the bake modal when you run the command.
 | Preserve inline links | on | Keep `[[links]]` that appear inline without display text intact (useful for citation-style references) |
 | Remove tasks from output | off | Strip `- [ ]` and `- [x]` task lines from the compiled document |
 | Remove tags from output | off | Strip `#tags` from the compiled document |
+| Structured mode | off | Inject a heading for any embedded file that lacks one (frontmatter `title` → filename), and skip files that are empty after processing |
 
 ## Improvements over the original
 
