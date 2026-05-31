@@ -3,6 +3,7 @@ import { BakeSettings } from './main';
 import { bake } from './bake';
 import { reindexNotes, sanitizeBakedContent, stripDataviewBlocks } from './util';
 import { ResolutionMap } from './ambiguity';
+import { isBCAvailable, getOutgoingBCEdges } from './bcIntegration';
 
 export interface BreadcrumbNode {
   file: TFile;
@@ -10,11 +11,19 @@ export interface BreadcrumbNode {
   children: BreadcrumbNode[];
 }
 
-// Read the "down" links from a file's frontmatter using Obsidian's frontmatterLinks cache
+/**
+ * Get child files for a given field.
+ * Uses the Breadcrumbs plugin WASM graph when available (respects all
+ * BC edge sources); falls back to reading frontmatterLinks directly.
+ */
 function getDownLinks(app: App, file: TFile, downField: string): TFile[] {
+  if (isBCAvailable(app)) {
+    return getOutgoingBCEdges(app, file, downField);
+  }
+
+  // Fallback: read directly from Obsidian's frontmatterLinks cache
   const cache = app.metadataCache.getFileCache(file);
   if (!cache) return [];
-
   const fmLinks = cache.frontmatterLinks?.filter((l) => l.key === downField) ?? [];
   return fmLinks
     .map((l) => app.metadataCache.getFirstLinkpathDest(l.link, file.path))
@@ -34,14 +43,16 @@ function sortByNextPrev(app: App, files: TFile[], nextField: string): TFile[] {
   const hasPrev = new Set<string>();         // paths that are pointed to by a 'next'
 
   for (const file of files) {
-    const fmLinks = app.metadataCache.getFileCache(file)?.frontmatterLinks ?? [];
-    for (const link of fmLinks) {
-      if (link.key !== nextField) continue;
-      const target = app.metadataCache.getFirstLinkpathDest(link.link, file.path);
-      if (target && fileSet.has(target.path)) {
-        nextMap.set(file.path, target);
-        hasPrev.add(target.path);
-      }
+    const nextFiles = isBCAvailable(app)
+      ? getOutgoingBCEdges(app, file, nextField).filter((f) => fileSet.has(f.path))
+      : (app.metadataCache.getFileCache(file)?.frontmatterLinks ?? [])
+          .filter((l) => l.key === nextField)
+          .map((l) => app.metadataCache.getFirstLinkpathDest(l.link, file.path))
+          .filter((f): f is TFile => f != null && fileSet.has(f.path));
+
+    for (const target of nextFiles) {
+      nextMap.set(file.path, target);
+      hasPrev.add(target.path);
     }
   }
 

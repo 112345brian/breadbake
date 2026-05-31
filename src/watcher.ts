@@ -1,4 +1,5 @@
 import { App, Notice, TFile } from 'obsidian';
+import { onBCGraphUpdate } from './bcIntegration';
 import { BakeSettings } from './main';
 import { bake } from './bake';
 import { bakeProject, getProjectScenes } from './bakeProject';
@@ -25,6 +26,7 @@ export class WatchManager {
     config: WatchConfig;
     sourceFiles: Set<TFile>;
     timer: ReturnType<typeof setTimeout> | null;
+    bcUnsubscribe: (() => void) | null;
   }>();
 
   private eventRef: ReturnType<App['vault']['on']>;
@@ -37,20 +39,29 @@ export class WatchManager {
   }
 
   add(config: WatchConfig, sourceFiles: Set<TFile>) {
-    this.watches.set(config.outputPath, { config, sourceFiles, timer: null });
+    // For breadcrumb watches, also subscribe to BC graph updates
+    let bcUnsubscribe: (() => void) | null = null;
+    if (config.mode === 'breadcrumb') {
+      bcUnsubscribe = onBCGraphUpdate(this.app, () => {
+        this.scheduleRebake(config.outputPath);
+      });
+    }
+    this.watches.set(config.outputPath, { config, sourceFiles, timer: null, bcUnsubscribe });
     new Notice(`👁 Watching ${config.outputPath}`);
   }
 
   remove(outputPath: string) {
     const w = this.watches.get(outputPath);
     if (w?.timer) clearTimeout(w.timer);
+    w?.bcUnsubscribe?.();
     this.watches.delete(outputPath);
     new Notice(`Stopped watching ${outputPath}`);
   }
 
   removeAll() {
-    for (const [path, w] of this.watches) {
+    for (const w of this.watches.values()) {
       if (w.timer) clearTimeout(w.timer);
+      w.bcUnsubscribe?.();
     }
     this.watches.clear();
   }
@@ -64,11 +75,17 @@ export class WatchManager {
     this.app.vault.offref(this.eventRef);
   }
 
+  private scheduleRebake(outputPath: string) {
+    const watch = this.watches.get(outputPath);
+    if (!watch) return;
+    if (watch.timer) clearTimeout(watch.timer);
+    watch.timer = setTimeout(() => this.rebake(outputPath), DEBOUNCE_MS);
+  }
+
   private onModify(file: TFile) {
     for (const [outputPath, watch] of this.watches) {
       if (!watch.sourceFiles.has(file)) continue;
-      if (watch.timer) clearTimeout(watch.timer);
-      watch.timer = setTimeout(() => this.rebake(outputPath), DEBOUNCE_MS);
+      this.scheduleRebake(outputPath);
     }
   }
 

@@ -1,6 +1,7 @@
 import { App, Modal, Notice, Setting, TFile } from 'obsidian';
 import { BakeSettings } from './main';
 import { BreadcrumbNode, bakeBreadcrumbTree, buildBreadcrumbTree, flattenTree } from './breadcrumbs';
+import { getBCEdgeFields, isBCAvailable, onBCGraphUpdate } from './bcIntegration';
 import { detectAmbiguities, autoResolve, ResolutionMap } from './ambiguity';
 import { AmbiguityModal } from './AmbiguityModal';
 import { exportImages } from './imageExport';
@@ -9,6 +10,7 @@ import { validateHeadings } from './validate';
 
 export class BreadcrumbBakeModal extends Modal {
   private root: BreadcrumbNode;
+  private bcUnsubscribe: (() => void) | null = null;
 
   constructor(
     app: App,
@@ -21,7 +23,17 @@ export class BreadcrumbBakeModal extends Modal {
   }
 
   onOpen() {
+    // When BC rebuilds its graph, refresh our tree preview automatically
+    this.bcUnsubscribe = onBCGraphUpdate(this.app, () => {
+      this.root = buildBreadcrumbTree(this.app, this.file, new Set(), this.settings);
+      this.renderPreview();
+    });
     this.renderPreview();
+  }
+
+  onClose() {
+    this.bcUnsubscribe?.();
+    super.onClose();
   }
 
   private renderPreview() {
@@ -64,21 +76,67 @@ export class BreadcrumbBakeModal extends Modal {
     const tree = contentEl.createEl('ul', { cls: 'bripey-bc-tree' });
     this.renderNode(tree, this.root);
 
-    // Settings
-    new Setting(contentEl)
+    // BC status banner
+    const bcAvailable = isBCAvailable(this.app);
+    const bcFields = getBCEdgeFields(this.app);
+    if (bcAvailable) {
+      contentEl.createEl('p', {
+        text: `✓ Breadcrumbs plugin detected — using its graph (${bcFields.length} configured fields)`,
+        cls: 'mod-muted',
+      });
+    }
+
+    // Settings — use dropdown populated from BC fields (or text fallback)
+    const downSetting = new Setting(contentEl)
       .setName('Down field')
-      .setDesc('Frontmatter key used to find children.')
-      .addText((t) =>
-        t
-          .setValue(this.settings.breadcrumbDownField)
-          .onChange((v) => {
-            this.settings.breadcrumbDownField = v.trim() || 'down';
-            this.plugin.saveSettings();
-            // Rebuild tree and re-render
-            this.root = buildBreadcrumbTree(this.app, this.file, new Set(), this.settings);
-            this.renderPreview();
-          })
+      .setDesc('Field used to find children. ' + (bcAvailable ? 'Populated from your Breadcrumbs configuration.' : 'Frontmatter key.'));
+
+    if (bcAvailable && bcFields.length > 0) {
+      downSetting.addDropdown((drop) => {
+        bcFields.forEach((f) => drop.addOption(f, f));
+        drop.setValue(this.settings.breadcrumbDownField);
+        drop.onChange((v) => {
+          this.settings.breadcrumbDownField = v;
+          this.plugin.saveSettings();
+          this.root = buildBreadcrumbTree(this.app, this.file, new Set(), this.settings);
+          this.renderPreview();
+        });
+      });
+    } else {
+      downSetting.addText((t) =>
+        t.setValue(this.settings.breadcrumbDownField).onChange((v) => {
+          this.settings.breadcrumbDownField = v.trim() || 'down';
+          this.plugin.saveSettings();
+          this.root = buildBreadcrumbTree(this.app, this.file, new Set(), this.settings);
+          this.renderPreview();
+        })
       );
+    }
+
+    const nextSetting = new Setting(contentEl)
+      .setName('Next field')
+      .setDesc('Field used to order siblings via linked list. ' + (bcAvailable ? 'Populated from your Breadcrumbs configuration.' : ''));
+
+    if (bcAvailable && bcFields.length > 0) {
+      nextSetting.addDropdown((drop) => {
+        drop.addOption('', '(none)');
+        bcFields.forEach((f) => drop.addOption(f, f));
+        drop.setValue(this.settings.breadcrumbNextField);
+        drop.onChange((v) => {
+          this.settings.breadcrumbNextField = v;
+          this.plugin.saveSettings();
+          this.root = buildBreadcrumbTree(this.app, this.file, new Set(), this.settings);
+          this.renderPreview();
+        });
+      });
+    } else {
+      nextSetting.addText((t) =>
+        t.setValue(this.settings.breadcrumbNextField).onChange((v) => {
+          this.settings.breadcrumbNextField = v.trim();
+          this.plugin.saveSettings();
+        })
+      );
+    }
 
     new Setting(contentEl)
       .setName('Combine with body links')
