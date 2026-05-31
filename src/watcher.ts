@@ -4,12 +4,13 @@ import { BakeSettings } from './main';
 import { bake } from './bake';
 import { bakeProject, getProjectScenes } from './bakeProject';
 import { bakeBreadcrumbTree, buildBreadcrumbTree, flattenTree } from './breadcrumbs';
+import { buildOutlineTree } from './outlineBake';
 import { collectBakeTargets } from './ambiguity';
 import { sanitizeBakedContent, reindexNotes, mergeTagsIntoFrontmatter } from './util';
 import { exportImages } from './imageExport';
 import { runAllValidations } from './validate';
 
-export type WatchMode = 'link' | 'project' | 'breadcrumb';
+export type WatchMode = 'link' | 'project' | 'breadcrumb' | 'outline';
 
 export interface WatchConfig {
   outputPath: string;
@@ -111,6 +112,12 @@ export class WatchManager {
 
       } else if (config.mode === 'breadcrumb' && config.rootFile) {
         const tree = buildBreadcrumbTree(this.app, config.rootFile, new Set(), config.settings);
+        newSourceFiles = new Set(flattenTree(tree).map((n) => n.file));
+        baked = await bakeBreadcrumbTree(this.app, tree, config.settings);
+
+      } else if (config.mode === 'outline' && config.rootFile) {
+        const tree = buildOutlineTree(this.app, config.rootFile);
+        if (!tree) return;
         newSourceFiles = new Set(flattenTree(tree).map((n) => n.file));
         baked = await bakeBreadcrumbTree(this.app, tree, config.settings);
 

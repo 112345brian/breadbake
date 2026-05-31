@@ -163,6 +163,18 @@
 	margin: 2px 0 6px;
 }
 
+.bripey-outline-example {
+	font-size: 0.78em;
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 5px;
+	padding: 8px 10px;
+	margin-top: 8px;
+	white-space: pre;
+	overflow-x: auto;
+	color: var(--text-muted);
+}
+
 .bripey-scene-list {
 	margin: 8px 0;
 }

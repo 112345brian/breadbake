@@ -34,7 +34,7 @@ export interface BakeSettings {
   maxDepth: number;
   includePattern: string;
   excludePattern: string;
-  bakeMode: 'link' | 'breadcrumb';
+  bakeMode: 'link' | 'breadcrumb' | 'outline';
 }
 
 const DEFAULT_SETTINGS: BakeSettings = {

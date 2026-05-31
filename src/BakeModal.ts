@@ -5,6 +5,7 @@ import { AmbiguityModal } from './AmbiguityModal';
 import { ResolutionMap, collectBakeTargets, detectAmbiguities } from './ambiguity';
 import { buildBreadcrumbTree, bakeBreadcrumbTree, flattenTree } from './breadcrumbs';
 import { getBCEdgeFields, isBCAvailable } from './bcIntegration';
+import { buildOutlineTree, hasOutline, OUTLINE_FIELD } from './outlineBake';
 import { exportImages } from './imageExport';
 import EasyBake from './main';
 import { applyTemplates } from './watcher';
@@ -25,7 +26,7 @@ function enableBtn(btn: HTMLButtonElement) {
 }
 
 export class BakeModal extends Modal {
-  private currentMode: 'link' | 'breadcrumb';
+  private currentMode: 'link' | 'breadcrumb' | 'outline';
   private modeSectionEl!: HTMLElement;
   private previewEl!: HTMLElement;
   private previewCountEl!: HTMLElement;
@@ -76,7 +77,7 @@ export class BakeModal extends Modal {
     // ── Mode tabs ─────────────────────────────────────────────────────────
     const tabBar = leftCol.createDiv('bripey-mode-tabs');
     const tabs: HTMLButtonElement[] = [];
-    const makeTab = (label: string, mode: 'link' | 'breadcrumb') => {
+    const makeTab = (label: string, mode: 'link' | 'breadcrumb' | 'outline') => {
       const tab = tabBar.createEl('button', { text: label, cls: 'bripey-mode-tab' }) as HTMLButtonElement;
       if (this.currentMode === mode) tab.addClass('is-active');
       tabs.push(tab);
@@ -87,18 +88,17 @@ export class BakeModal extends Modal {
         tabs.forEach((t) => t.removeClass('is-active'));
         tab.addClass('is-active');
         this.modeSectionEl.empty();
-        if (mode === 'link') this.renderLinkSettings(this.modeSectionEl, save);
-        else this.renderBreadcrumbSettings(this.modeSectionEl, save);
+        this.renderModeSection(this.modeSectionEl, save);
         this.scheduleRefresh(0);
       });
     };
     makeTab('Link bake', 'link');
     makeTab('Breadcrumbs', 'breadcrumb');
+    makeTab('Outline', 'outline');
 
     // ── Mode-specific settings ────────────────────────────────────────────
     this.modeSectionEl = leftCol.createDiv('bripey-mode-section');
-    if (this.currentMode === 'link') this.renderLinkSettings(this.modeSectionEl, save);
-    else this.renderBreadcrumbSettings(this.modeSectionEl, save);
+    this.renderModeSection(this.modeSectionEl, save);
 
     // ── Advanced (collapsed) ──────────────────────────────────────────────
     const details = leftCol.createEl('details', { cls: 'bripey-advanced' });
@@ -112,6 +112,13 @@ export class BakeModal extends Modal {
 
     // ── Bottom bar ────────────────────────────────────────────────────────
     this.renderActions(contentEl, save);
+  }
+
+  // ── Mode section dispatcher ──────────────────────────────────────────────
+  private renderModeSection(parent: HTMLElement, save: () => void) {
+    if (this.currentMode === 'link') this.renderLinkSettings(parent, save);
+    else if (this.currentMode === 'breadcrumb') this.renderBreadcrumbSettings(parent, save);
+    else this.renderOutlineSettings(parent, save);
   }
 
   // ── Link mode settings ───────────────────────────────────────────────────
@@ -158,6 +165,35 @@ export class BakeModal extends Modal {
       'e.g. Beyond Good and Evil', () => s.includePattern, (v) => { s.includePattern = v; save(); });
     this.txt(parent, 'Max depth', '0 = unlimited.', '0',
       () => String(s.maxDepth), (v) => { s.maxDepth = Math.max(0, parseInt(v) || 0); save(); });
+  }
+
+  // ── Outline mode settings ─────────────────────────────────────────────────
+  private renderOutlineSettings(parent: HTMLElement, _save: () => void) {
+    const hasIt = hasOutline(this.app, this.file);
+
+    if (hasIt) {
+      parent.createEl('p', { text: `✓ bake-outline found in frontmatter`, cls: 'mod-muted' });
+    } else {
+      parent.createEl('p', {
+        text: `No bake-outline key found in this file's frontmatter.`,
+        cls: 'mod-warning',
+      });
+    }
+
+    parent.createEl('p', {
+      cls: 'mod-muted',
+      text: 'Add a bake-outline list to define the document structure. Nesting maps to heading levels.',
+    });
+
+    const pre = parent.createEl('pre', { cls: 'bripey-outline-example' });
+    pre.setText(
+`${OUTLINE_FIELD}:
+  - "[[Chapter One]]"
+  - "[[Chapter Two]]":
+    - "[[Section 2.1]]"
+    - "[[Section 2.2]]"
+  - "[[Chapter Three]]"`
+    );
   }
 
   // ── Advanced settings ─────────────────────────────────────────────────────
@@ -237,7 +273,9 @@ export class BakeModal extends Modal {
           if (settings.reviewAmbiguities) {
             const targets = this.currentMode === 'link'
               ? await collectBakeTargets(this.app, this.file, new Set(), settings)
-              : new Set(flattenTree(buildBreadcrumbTree(this.app, this.file, new Set(), settings)).map((n) => n.file));
+              : this.currentMode === 'outline'
+                ? new Set((buildOutlineTree(this.app, this.file) ? flattenTree(buildOutlineTree(this.app, this.file)!) : []).map((n) => n.file))
+                : new Set(flattenTree(buildBreadcrumbTree(this.app, this.file, new Set(), settings)).map((n) => n.file));
             targets.delete(this.file);
             const ambiguities = detectAmbiguities(this.app, [...targets]);
             if (ambiguities.length > 0) {
@@ -254,6 +292,10 @@ export class BakeModal extends Modal {
           let baked: string;
           if (this.currentMode === 'breadcrumb') {
             const tree = buildBreadcrumbTree(this.app, this.file, new Set(), settings);
+            baked = await bakeBreadcrumbTree(this.app, tree, settings, resolutions);
+          } else if (this.currentMode === 'outline') {
+            const tree = buildOutlineTree(this.app, this.file);
+            if (!tree) throw new Error('No bake-outline found in frontmatter.');
             baked = await bakeBreadcrumbTree(this.app, tree, settings, resolutions);
           } else {
             baked = await bake(this.app, this.file, null, new Set(), settings, undefined, resolutions);
@@ -309,6 +351,10 @@ export class BakeModal extends Modal {
           if (this.currentMode === 'breadcrumb') {
             const tree = buildBreadcrumbTree(this.app, this.file, new Set(), settings);
             baked = await bakeBreadcrumbTree(this.app, tree, settings);
+          } else if (this.currentMode === 'outline') {
+            const tree = buildOutlineTree(this.app, this.file);
+            if (!tree) { new Notice('No bake-outline in frontmatter.'); return; }
+            baked = await bakeBreadcrumbTree(this.app, tree, settings);
           } else {
             baked = await bake(this.app, this.file, null, new Set(), settings);
           }
@@ -350,9 +396,14 @@ export class BakeModal extends Modal {
     if (this.currentMode === 'link') {
       entries = [];
       await traceBake(this.app, this.file, new Set(), settings, 0, null, entries);
-    } else {
+    } else if (this.currentMode === 'breadcrumb') {
       const tree = buildBreadcrumbTree(this.app, this.file, new Set(), settings);
       entries = flattenTree(tree).map((n) => ({ file: n.file, depth: n.depth, linkedBy: null }));
+    } else {
+      const tree = buildOutlineTree(this.app, this.file);
+      entries = tree
+        ? flattenTree(tree).map((n) => ({ file: n.file, depth: n.depth, linkedBy: null }))
+        : [{ file: this.file, depth: 0, linkedBy: null }];
     }
 
     // Dedup
