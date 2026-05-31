@@ -4,6 +4,7 @@ import { ProjectScene, bakeProject, getKnownProjects, getProjectScenes, writeSce
 import { AmbiguityModal } from './AmbiguityModal';
 import { ResolutionMap, autoResolve, detectAmbiguities } from './ambiguity';
 import { getWordCount } from './util';
+import { validateHeadings } from './validate';
 
 export class ProjectBakeModal extends Modal {
   constructor(app: App, plugin: { settings: BakeSettings; saveSettings(): Promise<void> }) {
@@ -142,6 +143,23 @@ export class ProjectBakeModal extends Modal {
 
         if (existing instanceof TFile) {
           app.workspace.getLeaf('tab').openFile(existing);
+        }
+
+        const warnings = validateHeadings(baked);
+        if (warnings.length > 0) {
+          this.contentEl.empty();
+          this.titleEl.setText('Baked — heading warnings');
+          this.contentEl.createEl('p', { text: 'The baked file was saved, but the heading structure may not be idiomatic:' });
+          const list = this.contentEl.createEl('ul');
+          warnings.forEach((w) => list.createEl('li', { text: w.message }));
+          this.contentEl.createEl('p', {
+            cls: 'mod-muted',
+            text: 'Check the source files for skipped heading levels or multiple H1s, then re-bake.',
+          });
+          this.modalEl.createDiv('modal-button-container', (el2) => {
+            el2.createEl('button', { text: 'Close', cls: 'mod-cta' }).addEventListener('click', () => this.close());
+          });
+          return;
         }
 
         this.close();

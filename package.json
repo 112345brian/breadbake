@@ -12,23 +12,33 @@
 		"clean": "yarn prettier && yarn lint:fix",
 		"rlnotes": "git log $(git describe --tags --abbrev=0)..HEAD --oneline > release-notes.md && git add release-notes.md",
 		"bump": "node version-bump.mjs && git add manifest.json versions.json && yarn rlnotes",
-		"release": "git commit -m $npm_package_version && git tag $npm_package_version && git push && git push --tags"
+		"release": "git commit -m $npm_package_version && git tag $npm_package_version && git push && git push --tags",
+		"test": "jest"
+	},
+	"jest": {
+		"testEnvironment": "node",
+		"testMatch": [
+			"**/src/__tests__/**/*.test.ts"
+		]
 	},
 	"keywords": [],
 	"author": "",
 	"license": "GPL-3.0-or-later",
 	"devDependencies": {
+		"@babel/preset-env": "^7.29.7",
+		"@babel/preset-typescript": "^7.29.7",
 		"@trivago/prettier-plugin-sort-imports": "4.2.0",
+		"@types/jest": "^30.0.0",
 		"@types/node": "16.11.6",
 		"@typescript-eslint/eslint-plugin": "5.29.0",
 		"@typescript-eslint/parser": "5.29.0",
 		"builtin-modules": "3.3.0",
 		"esbuild": "0.17.3",
 		"eslint": "8.47.0",
+		"jest": "^30.4.2",
 		"obsidian": "latest",
 		"prettier": "3.0.2",
 		"tslib": "2.4.0",
 		"typescript": "4.7.4"
-	},
-	"dependencies": {}
+	}
 }

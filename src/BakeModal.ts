@@ -5,6 +5,7 @@ import { AmbiguityModal } from './AmbiguityModal';
 import { ResolutionMap, autoResolve, collectBakeTargets, detectAmbiguities } from './ambiguity';
 import EasyBake from './main';
 import { getWordCount } from './util';
+import { validateHeadings } from './validate';
 
 function disableBtn(btn: HTMLButtonElement) {
   btn.removeClass('mod-cta');
@@ -237,6 +238,12 @@ export class BakeModal extends Modal {
             if (existing instanceof TFile) {
               this.app.workspace.getLeaf('tab').openFile(existing);
             }
+
+            const warnings = validateHeadings(baked);
+            if (warnings.length > 0) {
+              this.showWarnings(warnings.map((w) => w.message));
+              return; // keep modal open so user can read warnings
+            }
           }
 
           this.close();
@@ -253,6 +260,30 @@ export class BakeModal extends Modal {
           })
         );
       });
+    });
+  }
+
+  private showWarnings(messages: string[]) {
+    const { contentEl } = this;
+    contentEl.empty();
+    this.titleEl.setText('Baked — heading warnings');
+
+    contentEl.createEl('p', {
+      text: 'The baked file was saved, but the heading structure may not be idiomatic:',
+    });
+
+    const list = contentEl.createEl('ul');
+    messages.forEach((msg) => list.createEl('li', { text: msg }));
+
+    contentEl.createEl('p', {
+      cls: 'mod-muted',
+      text: 'This usually means a source file skips heading levels (e.g. H1 → H3) or contains multiple H1s. Check the linked files and re-bake, or ignore if intentional.',
+    });
+
+    this.modalEl.createDiv('modal-button-container', (el) => {
+      el.createEl('button', { text: 'Close', cls: 'mod-cta' }).addEventListener('click', () =>
+        this.close()
+      );
     });
   }
 }
