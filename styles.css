@@ -1,12 +1,36 @@
-body:not(.is-mobile) .easy-bake-modal .modal {
+.easy-bake-modal .modal {
+	width: min(780px, 92vw);
 	overflow: hidden;
 }
 
-body:not(.is-mobile) .easy-bake-modal .modal-content {
-	overflow: auto;
-	height: 100%;
-	flex-grow: 0;
-	flex-shrink: 1;
+.easy-bake-modal .modal-content {
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+	max-height: 80vh;
+}
+
+/* ── Two-column body ─────────────────────────────────────── */
+.bripey-body {
+	display: flex;
+	gap: 0;
+	flex: 1;
+	min-height: 0;
+	overflow: hidden;
+}
+
+.bripey-settings-col {
+	flex: 0 0 300px;
+	overflow-y: auto;
+	padding-right: 16px;
+	border-right: 1px solid var(--background-modifier-border);
+}
+
+.bripey-preview-col {
+	flex: 1;
+	overflow-y: auto;
+	padding-left: 16px;
+	min-width: 0;
 }
 
 /* ── Mode tabs ────────────────────────────────────────────── */
@@ -82,6 +106,61 @@ body:not(.is-mobile) .easy-bake-modal .modal-content {
 	margin-bottom: 0;
 	font-size: 0.85em;
 	color: var(--text-muted);
+}
+
+/* ── Preview column ──────────────────────────────────────── */
+.bripey-preview-count {
+	font-size: 0.85em;
+	margin-bottom: 2px;
+}
+
+.bripey-preview-hint {
+	font-size: 0.8em;
+	margin-bottom: 6px;
+}
+
+.bripey-preview-list {
+	font-size: 0.88em;
+}
+
+.bripey-preview-entry {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 3px 4px;
+	border-radius: 4px;
+	cursor: pointer;
+	transition: background 0.1s;
+}
+
+.bripey-preview-entry:hover {
+	background: var(--background-modifier-hover);
+}
+
+.bripey-preview-name {
+	flex: 1;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.bripey-preview-badge {
+	font-size: 0.75em;
+	color: var(--text-faint);
+	background: var(--background-modifier-border);
+	border-radius: 3px;
+	padding: 1px 5px;
+	flex-shrink: 0;
+}
+
+.bripey-excluded .bripey-preview-name {
+	text-decoration: line-through;
+	opacity: 0.35;
+}
+
+.bripey-bc-badge {
+	font-size: 0.8em;
+	margin: 2px 0 6px;
 }
 
 .bripey-scene-list {

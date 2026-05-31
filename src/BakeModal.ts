@@ -2,15 +2,15 @@ import { Modal, Notice, Setting, TFile } from 'obsidian';
 
 import { bake } from './bake';
 import { AmbiguityModal } from './AmbiguityModal';
-import { ResolutionMap, autoResolve, collectBakeTargets, detectAmbiguities } from './ambiguity';
+import { ResolutionMap, collectBakeTargets, detectAmbiguities } from './ambiguity';
 import { buildBreadcrumbTree, bakeBreadcrumbTree, flattenTree } from './breadcrumbs';
 import { getBCEdgeFields, isBCAvailable } from './bcIntegration';
-import { DryRunModal } from './DryRunModal';
 import { exportImages } from './imageExport';
 import EasyBake from './main';
 import { applyTemplates } from './watcher';
-import { getWordCount, mergeTagsIntoFrontmatter } from './util';
+import { mergeTagsIntoFrontmatter } from './util';
 import { runAllValidations } from './validate';
+import { traceBake, DryRunEntry } from './dryRun';
 
 function disableBtn(btn: HTMLButtonElement) {
   btn.disabled = true;
@@ -24,35 +24,14 @@ function enableBtn(btn: HTMLButtonElement) {
   btn.addClass('mod-cta');
 }
 
-function toggle(
-  name: string,
-  desc: string,
-  parent: HTMLElement,
-  getValue: () => boolean,
-  setValue: (v: boolean) => void
-) {
-  new Setting(parent).setName(name).setDesc(desc).addToggle((t) =>
-    t.setValue(getValue()).onChange((v) => setValue(v))
-  );
-}
-
-function textSetting(
-  name: string,
-  desc: string,
-  placeholder: string,
-  parent: HTMLElement,
-  getValue: () => string,
-  setValue: (v: string) => void
-) {
-  new Setting(parent).setName(name).setDesc(desc).addText((t) =>
-    t.setPlaceholder(placeholder).setValue(getValue()).onChange((v) => setValue(v))
-  );
-}
-
 export class BakeModal extends Modal {
   private currentMode: 'link' | 'breadcrumb';
   private modeSectionEl!: HTMLElement;
+  private previewEl!: HTMLElement;
+  private previewCountEl!: HTMLElement;
   private btn!: HTMLButtonElement;
+  private excluded = new Set<string>();
+  private refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private plugin: EasyBake, private file: TFile) {
     super(plugin.app);
@@ -62,21 +41,40 @@ export class BakeModal extends Modal {
   onOpen() {
     this.titleEl.setText('Bake file');
     this.modalEl.addClass('easy-bake-modal');
-    this.render();
+    this.build();
+    this.scheduleRefresh(0);
   }
 
-  private render() {
+  onClose() {
+    if (this.refreshTimer) clearTimeout(this.refreshTimer);
+  }
+
+  // ── Full build (runs once) ────────────────────────────────────────────────
+  private build() {
     const { contentEl } = this;
     const { settings } = this.plugin;
     contentEl.empty();
 
-    // ── File path ──────────────────────────────────────────────────────────
-    contentEl
-      .createEl('p', { text: 'File: ', cls: 'bripey-file-label' })
-      .createEl('strong', { text: this.file.path });
+    // Clear any stale button bars (safety net)
+    this.modalEl.querySelectorAll('.modal-button-container').forEach((el) => el.remove());
 
-    // ── Mode tabs ──────────────────────────────────────────────────────────
-    const tabBar = contentEl.createDiv('bripey-mode-tabs');
+    const save = () => {
+      this.plugin.saveSettings();
+      this.scheduleRefresh();
+    };
+
+    // ── Two-column wrapper ────────────────────────────────────────────────
+    const body = contentEl.createDiv('bripey-body');
+    const leftCol = body.createDiv('bripey-settings-col');
+    const rightCol = body.createDiv('bripey-preview-col');
+
+    // ── File label ────────────────────────────────────────────────────────
+    leftCol
+      .createEl('p', { text: 'File: ', cls: 'bripey-file-label' })
+      .createEl('strong', { text: this.file.basename });
+
+    // ── Mode tabs ─────────────────────────────────────────────────────────
+    const tabBar = leftCol.createDiv('bripey-mode-tabs');
     const tabs: HTMLButtonElement[] = [];
     const makeTab = (label: string, mode: 'link' | 'breadcrumb') => {
       const tab = tabBar.createEl('button', { text: label, cls: 'bripey-mode-tab' }) as HTMLButtonElement;
@@ -86,199 +84,154 @@ export class BakeModal extends Modal {
         this.currentMode = mode;
         settings.bakeMode = mode;
         this.plugin.saveSettings();
-        // Only swap the mode section — don't re-render the whole modal
         tabs.forEach((t) => t.removeClass('is-active'));
         tab.addClass('is-active');
         this.modeSectionEl.empty();
-        if (mode === 'link') this.renderLinkModeSettings(this.modeSectionEl);
-        else this.renderBreadcrumbModeSettings(this.modeSectionEl);
+        if (mode === 'link') this.renderLinkSettings(this.modeSectionEl, save);
+        else this.renderBreadcrumbSettings(this.modeSectionEl, save);
+        this.scheduleRefresh(0);
       });
     };
     makeTab('Link bake', 'link');
     makeTab('Breadcrumbs', 'breadcrumb');
 
-    // ── Mode-specific settings ─────────────────────────────────────────────
-    this.modeSectionEl = contentEl.createDiv('bripey-mode-section');
-    if (this.currentMode === 'link') {
-      this.renderLinkModeSettings(this.modeSectionEl);
-    } else {
-      this.renderBreadcrumbModeSettings(this.modeSectionEl);
-    }
+    // ── Mode-specific settings ────────────────────────────────────────────
+    this.modeSectionEl = leftCol.createDiv('bripey-mode-section');
+    if (this.currentMode === 'link') this.renderLinkSettings(this.modeSectionEl, save);
+    else this.renderBreadcrumbSettings(this.modeSectionEl, save);
 
-    // ── Advanced (collapsed) ───────────────────────────────────────────────
-    const details = contentEl.createEl('details', { cls: 'bripey-advanced' });
+    // ── Advanced (collapsed) ──────────────────────────────────────────────
+    const details = leftCol.createEl('details', { cls: 'bripey-advanced' });
     details.createEl('summary', { text: 'Advanced options' });
-    this.renderAdvancedSettings(details);
+    this.renderAdvanced(details, save);
 
-    // ── Output name + actions ──────────────────────────────────────────────
-    this.renderActions(contentEl);
+    // ── Preview column ────────────────────────────────────────────────────
+    this.previewCountEl = rightCol.createEl('p', { cls: 'bripey-preview-count mod-muted' });
+    rightCol.createEl('p', { text: 'Click a file to exclude it.', cls: 'mod-muted bripey-preview-hint' });
+    this.previewEl = rightCol.createDiv('bripey-preview-list');
+
+    // ── Bottom bar ────────────────────────────────────────────────────────
+    this.renderActions(contentEl, save);
   }
 
-  // ── Link mode ─────────────────────────────────────────────────────────────
-  private renderLinkModeSettings(parent: HTMLElement) {
-    const { settings } = this.plugin;
-    const save = () => this.plugin.saveSettings();
-
-    textSetting('Max depth', '0 = unlimited. 1 = only direct links from this file.', '0',
-      parent, () => String(settings.maxDepth), (v) => { settings.maxDepth = Math.max(0, parseInt(v) || 0); save(); });
-
-    textSetting('Include only files matching',
-      'Substring filter on file path — only matching files are baked.',
-      'e.g. Beyond Good and Evil', parent,
-      () => settings.includePattern, (v) => { settings.includePattern = v; save(); });
-
-    textSetting('Exclude files matching',
-      'Files whose path contains this string are left as plain text.',
-      'e.g. /people/', parent,
-      () => settings.excludePattern, (v) => { settings.excludePattern = v; save(); });
-
-    toggle('Map of contents mode',
-      'Treat bulleted wikilinks as a document outline — bullet depth → heading level.',
-      parent, () => settings.mocMode, (v) => { settings.mocMode = v; save(); });
+  // ── Link mode settings ───────────────────────────────────────────────────
+  private renderLinkSettings(parent: HTMLElement, save: () => void) {
+    const s = this.plugin.settings;
+    this.txt(parent, 'Max depth', '0 = unlimited. 1 = only direct links.', '0',
+      () => String(s.maxDepth), (v) => { s.maxDepth = Math.max(0, parseInt(v) || 0); save(); });
+    this.txt(parent, 'Include files matching', 'Only paths containing this string are followed.',
+      'e.g. Beyond Good and Evil', () => s.includePattern, (v) => { s.includePattern = v; save(); });
+    this.txt(parent, 'Exclude files matching', 'Paths containing this string are left as plain text.',
+      'e.g. /people/', () => s.excludePattern, (v) => { s.excludePattern = v; save(); });
+    this.tog(parent, 'Map of contents mode', 'Bullet depth → heading level.',
+      () => s.mocMode, (v) => { s.mocMode = v; save(); });
   }
 
-  // ── Breadcrumb mode ───────────────────────────────────────────────────────
-  private renderBreadcrumbModeSettings(parent: HTMLElement) {
-    const { settings } = this.plugin;
-    const save = () => this.plugin.saveSettings();
+  // ── Breadcrumb mode settings ─────────────────────────────────────────────
+  private renderBreadcrumbSettings(parent: HTMLElement, save: () => void) {
+    const s = this.plugin.settings;
     const bcAvailable = isBCAvailable(this.app);
     const bcFields = getBCEdgeFields(this.app);
 
     if (bcAvailable) {
-      parent.createEl('p', {
-        text: `✓ Breadcrumbs plugin detected — ${bcFields.length} configured fields`,
-        cls: 'mod-muted',
-      });
+      parent.createEl('p', { text: `✓ Breadcrumbs — ${bcFields.length} fields`, cls: 'mod-muted bripey-bc-badge' });
     }
 
-    const makeFieldSetting = (
-      name: string, desc: string,
-      getValue: () => string, setValue: (v: string) => void
-    ) => {
-      const s = new Setting(parent).setName(name).setDesc(desc);
+    const fieldSetting = (name: string, desc: string, get: () => string, set: (v: string) => void, allowNone = false) => {
+      const setting = new Setting(parent).setName(name).setDesc(desc);
       if (bcAvailable && bcFields.length) {
-        s.addDropdown((d) => {
-          if (name.includes('Next')) d.addOption('', '(none)');
+        setting.addDropdown((d) => {
+          if (allowNone) d.addOption('', '(none)');
           bcFields.forEach((f) => d.addOption(f, f));
-          d.setValue(getValue()).onChange((v) => { setValue(v); save(); });
+          d.setValue(get()).onChange((v) => { set(v); save(); });
         });
       } else {
-        s.addText((t) => t.setValue(getValue()).onChange((v) => { setValue(v); save(); }));
+        setting.addText((t) => t.setValue(get()).onChange((v) => { set(v); save(); }));
       }
     };
 
-    makeFieldSetting('Down field', 'Frontmatter field that defines child notes.',
-      () => settings.breadcrumbDownField, (v) => { settings.breadcrumbDownField = v || 'down'; });
-
-    makeFieldSetting('Next field', 'Field used to order siblings via linked-list chain.',
-      () => settings.breadcrumbNextField, (v) => { settings.breadcrumbNextField = v; });
-
-    toggle('Combine with body links',
-      'Also pull in wikilinks from the file body, merged with frontmatter children.',
-      parent, () => settings.breadcrumbCombineWithMoc,
-      (v) => { settings.breadcrumbCombineWithMoc = v; save(); });
-
-    textSetting('Include only files matching',
-      'Substring filter — breadcrumb children that don\'t match are excluded.',
-      'e.g. Beyond Good and Evil', parent,
-      () => settings.includePattern, (v) => { settings.includePattern = v; save(); });
-
-    textSetting('Max depth', '0 = unlimited levels of breadcrumb children.', '0',
-      parent, () => String(settings.maxDepth),
-      (v) => { settings.maxDepth = Math.max(0, parseInt(v) || 0); save(); });
+    fieldSetting('Down field', 'Defines child notes.', () => s.breadcrumbDownField, (v) => { s.breadcrumbDownField = v || 'down'; });
+    fieldSetting('Next field', 'Orders siblings via linked-list chain.', () => s.breadcrumbNextField, (v) => { s.breadcrumbNextField = v; }, true);
+    this.tog(parent, 'Combine with body links', 'Merge body wikilinks into children.',
+      () => s.breadcrumbCombineWithMoc, (v) => { s.breadcrumbCombineWithMoc = v; save(); });
+    this.txt(parent, 'Include files matching', 'Substring filter on breadcrumb children.',
+      'e.g. Beyond Good and Evil', () => s.includePattern, (v) => { s.includePattern = v; save(); });
+    this.txt(parent, 'Max depth', '0 = unlimited.', '0',
+      () => String(s.maxDepth), (v) => { s.maxDepth = Math.max(0, parseInt(v) || 0); save(); });
   }
 
   // ── Advanced settings ─────────────────────────────────────────────────────
-  private renderAdvancedSettings(parent: HTMLElement) {
-    const { settings } = this.plugin;
-    const save = () => this.plugin.saveSettings();
+  private renderAdvanced(parent: HTMLElement, save: () => void) {
+    const s = this.plugin.settings;
 
     parent.createEl('p', { text: 'Structure', cls: 'bripey-advanced-group' });
-    toggle('Adjust heading levels',
-      'Shift headings in embedded files so they nest under the containing heading.',
-      parent, () => settings.adjustHeadingLevels, (v) => { settings.adjustHeadingLevels = v; save(); });
-    toggle('Skip Excalidraw embeds', 'Leave .excalidraw links as-is.',
-      parent, () => settings.skipExcalidraw, (v) => { settings.skipExcalidraw = v; save(); });
-    toggle('Preserve inline links',
-      'Keep [[links]] without display text intact (citation-style references).',
-      parent, () => settings.preserveInlineLinks, (v) => { settings.preserveInlineLinks = v; save(); });
-    toggle('Bake links and embeds in lists',
-      'Also expand links that occupy an entire list bullet.',
-      parent, () => settings.bakeInList, (v) => { settings.bakeInList = v; save(); });
-    toggle('Bake file links',
-      'Convert ![[image.png]] to an absolute file:// path.',
-      parent, () => settings.convertFileLinks, (v) => { settings.convertFileLinks = v; save(); });
-    toggle('Structured mode',
-      'Auto-inject a heading for files that lack one; skip empty files.',
-      parent, () => settings.structuredMode, (v) => { settings.structuredMode = v; save(); });
-    toggle('Review ambiguities before baking',
-      'Walk through missing headings and empty files one-by-one before baking.',
-      parent, () => settings.reviewAmbiguities, (v) => { settings.reviewAmbiguities = v; save(); });
+    this.tog(parent, 'Adjust heading levels', 'Shift headings to nest under the containing heading.',
+      () => s.adjustHeadingLevels, (v) => { s.adjustHeadingLevels = v; save(); });
+    this.tog(parent, 'Skip Excalidraw embeds', 'Leave .excalidraw links as-is.',
+      () => s.skipExcalidraw, (v) => { s.skipExcalidraw = v; save(); });
+    this.tog(parent, 'Preserve inline links', 'Keep [[links]] without display text (citation-style).',
+      () => s.preserveInlineLinks, (v) => { s.preserveInlineLinks = v; save(); });
+    this.tog(parent, 'Bake links in lists', 'Also expand links that take up an entire list bullet.',
+      () => s.bakeInList, (v) => { s.bakeInList = v; save(); });
+    this.tog(parent, 'Bake file links', 'Convert ![[image.png]] to absolute file:// paths.',
+      () => s.convertFileLinks, (v) => { s.convertFileLinks = v; save(); });
+    this.tog(parent, 'Structured mode', 'Auto-inject headings for files that lack one; skip empty files.',
+      () => s.structuredMode, (v) => { s.structuredMode = v; save(); });
+    this.tog(parent, 'Review ambiguities', 'Walk through missing headings / empty files before baking.',
+      () => s.reviewAmbiguities, (v) => { s.reviewAmbiguities = v; save(); });
 
     parent.createEl('p', { text: 'Cleanup', cls: 'bripey-advanced-group' });
-    toggle('Strip comments', 'Remove %%comment%% and <!-- HTML --> blocks.',
-      parent, () => settings.stripComments, (v) => { settings.stripComments = v; save(); });
-    toggle('Remove tasks', 'Strip - [ ] and - [x] lines.',
-      parent, () => settings.removeTasks, (v) => { settings.removeTasks = v; save(); });
-    toggle('Remove tags', 'Strip #tags.',
-      parent, () => settings.removeTags, (v) => { settings.removeTags = v; save(); });
-    toggle('Convert wikilinks to Markdown links',
-      'Replace [[wikilinks]] with [text](file.md) for portability.',
-      parent, () => settings.convertWikilinks, (v) => { settings.convertWikilinks = v; save(); });
+    this.tog(parent, 'Strip comments', 'Remove %%...%% and <!-- --> blocks.',
+      () => s.stripComments, (v) => { s.stripComments = v; save(); });
+    this.tog(parent, 'Remove tasks', 'Strip - [ ] and - [x] lines.',
+      () => s.removeTasks, (v) => { s.removeTasks = v; save(); });
+    this.tog(parent, 'Remove tags', 'Strip #tags.',
+      () => s.removeTags, (v) => { s.removeTags = v; save(); });
+    this.tog(parent, 'Convert wikilinks to Markdown', 'Replace [[wikilinks]] with [text](file.md).',
+      () => s.convertWikilinks, (v) => { s.convertWikilinks = v; save(); });
     new Setting(parent).setName('Dataview blocks').addDropdown((d) =>
       d.addOption('keep', 'Keep').addOption('strip', 'Strip').addOption('warn', 'Warn')
-        .setValue(settings.dataviewHandling)
-        .onChange((v) => { settings.dataviewHandling = v as typeof settings.dataviewHandling; save(); })
+        .setValue(s.dataviewHandling)
+        .onChange((v) => { s.dataviewHandling = v as typeof s.dataviewHandling; save(); })
     );
 
     parent.createEl('p', { text: 'Export', cls: 'bripey-advanced-group' });
-    new Setting(parent)
-      .setName('Merge frontmatter fields')
-      .setDesc('Comma-separated fields to collect from all files and merge into output.')
-      .addToggle((t) => t.setValue(settings.mergeFrontmatter).onChange((v) => { settings.mergeFrontmatter = v; save(); }))
-      .addText((t) => t.setPlaceholder('tags').setValue(settings.frontmatterMergeFields)
-        .onChange((v) => { settings.frontmatterMergeFields = v; save(); }));
-    toggle('Export images to assets folder',
-      'Copy images to {name}_assets/ and rewrite links to relative paths.',
-      parent, () => settings.exportImages, (v) => { settings.exportImages = v; save(); });
-    textSetting('Section separator', 'Text between baked sections (e.g. ---).', '---',
-      parent, () => settings.sectionSeparator, (v) => { settings.sectionSeparator = v; save(); });
-    textSetting('Header template', 'Note to prepend to the output.', 'Templates/Header',
-      parent, () => settings.headerTemplate, (v) => { settings.headerTemplate = v; save(); });
-    textSetting('Footer template', 'Note to append to the output.', 'Templates/Footer',
-      parent, () => settings.footerTemplate, (v) => { settings.footerTemplate = v; save(); });
+    new Setting(parent).setName('Merge frontmatter fields')
+      .setDesc('Comma-separated fields to collect from all files.')
+      .addToggle((t) => t.setValue(s.mergeFrontmatter).onChange((v) => { s.mergeFrontmatter = v; save(); }))
+      .addText((t) => t.setPlaceholder('tags').setValue(s.frontmatterMergeFields)
+        .onChange((v) => { s.frontmatterMergeFields = v; save(); }));
+    this.tog(parent, 'Export images to assets folder', 'Copy images and rewrite links to relative paths.',
+      () => s.exportImages, (v) => { s.exportImages = v; save(); });
+    this.txt(parent, 'Section separator', 'Text between sections (e.g. ---).', '---',
+      () => s.sectionSeparator, (v) => { s.sectionSeparator = v; save(); });
+    this.txt(parent, 'Header template', 'Note to prepend.', 'Templates/Header',
+      () => s.headerTemplate, (v) => { s.headerTemplate = v; save(); });
+    this.txt(parent, 'Footer template', 'Note to append.', 'Templates/Footer',
+      () => s.footerTemplate, (v) => { s.footerTemplate = v; save(); });
   }
 
-  // ── Output name + action buttons ──────────────────────────────────────────
-  private renderActions(contentEl: HTMLElement) {
+  // ── Output + action bar ────────────────────────────────────────────────────
+  private renderActions(contentEl: HTMLElement, save: () => void) {
     const { settings } = this.plugin;
-
     new Setting(contentEl).setName('Output file name').then((setting) => {
-      new Setting(contentEl).then((wc) => {
-        wc.addButton((b) => b.setButtonText('Calculate word count').onClick(async () => {
-          const baked = await bake(this.app, this.file, null, new Set(), settings);
-          wc.descEl.setText(`${getWordCount(baked).toLocaleString()} words`);
-        }));
-      });
-
       this.modalEl.createDiv('modal-button-container', (el) => {
         let outputName = this.file.basename + '.baked';
         let outputFolder = this.file.parent?.path ? this.file.parent.path + '/' : '';
         let watchAfterBake = false;
 
-        new Setting(el)
-          .setName('Watch for changes')
+        new Setting(el).setName('Watch for changes')
           .addToggle((t) => t.setValue(false).onChange((v) => (watchAfterBake = v)));
 
-        // ── executeBake — shared by Bake btn and Dry run proceed ───────────
-        const executeBake = async (manualExclusions: Set<string> = new Set()) => {
+        const executeBake = async () => {
           disableBtn(this.btn);
           if (!outputName) { enableBtn(this.btn); return; }
 
+          // Build resolutions from excluded set
           let resolutions: ResolutionMap | undefined;
-          if (manualExclusions.size > 0) {
+          if (this.excluded.size > 0) {
             resolutions = new Map();
-            manualExclusions.forEach((p) => resolutions!.set(p, { action: 'skip' }));
+            this.excluded.forEach((p) => resolutions!.set(p, { action: 'skip' }));
           }
 
           if (settings.reviewAmbiguities) {
@@ -299,7 +252,6 @@ export class BakeModal extends Modal {
 
           const { vault } = this.app;
           let baked: string;
-
           if (this.currentMode === 'breadcrumb') {
             const tree = buildBreadcrumbTree(this.app, this.file, new Set(), settings);
             baked = await bakeBreadcrumbTree(this.app, tree, settings, resolutions);
@@ -325,11 +277,8 @@ export class BakeModal extends Modal {
 
           const nextPath = outputFolder + outputName + '.md';
           let existing = vault.getAbstractFileByPath(nextPath);
-          if (existing instanceof TFile) {
-            await vault.modify(existing, baked);
-          } else {
-            existing = await vault.create(nextPath, baked);
-          }
+          if (existing instanceof TFile) await vault.modify(existing, baked);
+          else existing = await vault.create(nextPath, baked);
 
           if (settings.exportImages && existing instanceof TFile) {
             baked = await exportImages(this.app, baked, existing.parent?.path ?? '', outputName);
@@ -346,28 +295,15 @@ export class BakeModal extends Modal {
             );
           }
 
-          if (existing instanceof TFile) {
-            this.app.workspace.getLeaf('tab').openFile(existing);
-          }
+          if (existing instanceof TFile) this.app.workspace.getLeaf('tab').openFile(existing);
 
           const warnings = runAllValidations(baked).filter(
             (w) => w.kind !== 'dataview-block' || settings.dataviewHandling === 'warn'
           );
-          if (warnings.length > 0) {
-            this.showWarnings(warnings.map((w) => w.message));
-            return;
-          }
+          if (warnings.length > 0) { this.showWarnings(warnings.map((w) => w.message)); return; }
           this.close();
         };
 
-        // Dry run
-        el.createEl('button', { text: 'Dry run' }).addEventListener('click', () => {
-          new DryRunModal(this.app, 'link', this.file, null, settings, (excluded) => {
-            executeBake(excluded);
-          }).open();
-        });
-
-        // Copy to clipboard
         el.createEl('button', { text: 'Copy' }).addEventListener('click', async () => {
           let baked: string;
           if (this.currentMode === 'breadcrumb') {
@@ -396,6 +332,92 @@ export class BakeModal extends Modal {
     });
   }
 
+  // ── Live preview ──────────────────────────────────────────────────────────
+  private scheduleRefresh(delay = 400) {
+    if (this.refreshTimer) clearTimeout(this.refreshTimer);
+    this.refreshTimer = setTimeout(() => this.refreshPreview(), delay);
+  }
+
+  private async refreshPreview() {
+    if (!this.previewEl) return;
+    const { settings } = this.plugin;
+
+    this.previewCountEl.setText('Loading…');
+    this.previewEl.empty();
+
+    let entries: DryRunEntry[];
+
+    if (this.currentMode === 'link') {
+      entries = [];
+      await traceBake(this.app, this.file, new Set(), settings, 0, null, entries);
+    } else {
+      const tree = buildBreadcrumbTree(this.app, this.file, new Set(), settings);
+      entries = flattenTree(tree).map((n) => ({ file: n.file, depth: n.depth, linkedBy: null }));
+    }
+
+    // Dedup
+    const seen = new Set<string>();
+    const unique = entries.filter((e) => {
+      if (seen.has(e.file.path)) return false;
+      seen.add(e.file.path);
+      return true;
+    });
+
+    // Remove any excluded files that are no longer in the list
+    for (const path of this.excluded) {
+      if (!unique.some((e) => e.file.path === path)) this.excluded.delete(path);
+    }
+
+    const rootPath = this.file.path;
+
+    const updateCount = () => {
+      const included = unique.filter((e) => !this.excluded.has(e.file.path)).length;
+      const totalSize = unique
+        .filter((e) => !this.excluded.has(e.file.path))
+        .reduce((s, e) => s + e.file.stat.size, 0);
+      const estWords = Math.round(totalSize / 5).toLocaleString();
+      this.previewCountEl.setText(`${included} / ${unique.length} files · ~${estWords} words`);
+      if (this.btn) {
+        if (included === 0) disableBtn(this.btn);
+        else enableBtn(this.btn);
+      }
+    };
+
+    for (const entry of unique) {
+      const li = this.previewEl.createDiv('bripey-preview-entry');
+      li.style.paddingLeft = `${entry.depth * 14}px`;
+
+      const nameEl = li.createEl('span', {
+        text: entry.file.basename,
+        cls: 'bripey-preview-name',
+      });
+
+      const isRoot = entry.file.path === rootPath;
+      if (isRoot) {
+        li.createEl('span', { text: ' root', cls: 'bripey-preview-badge' });
+      } else {
+        if (this.excluded.has(entry.file.path)) li.addClass('bripey-excluded');
+        li.setAttribute('role', 'button');
+        li.setAttribute('tabindex', '0');
+        const toggle = () => {
+          if (this.excluded.has(entry.file.path)) {
+            this.excluded.delete(entry.file.path);
+            li.removeClass('bripey-excluded');
+          } else {
+            this.excluded.add(entry.file.path);
+            li.addClass('bripey-excluded');
+          }
+          updateCount();
+        };
+        li.addEventListener('click', toggle);
+        li.addEventListener('keydown', (e) => { if (e.key === ' ' || e.key === 'Enter') toggle(); });
+      }
+    }
+
+    updateCount();
+  }
+
+  // ── Warnings screen ────────────────────────────────────────────────────────
   private showWarnings(messages: string[]) {
     const { contentEl } = this;
     contentEl.empty();
@@ -403,13 +425,19 @@ export class BakeModal extends Modal {
     contentEl.createEl('p', { text: 'The file was saved, but:' });
     const list = contentEl.createEl('ul');
     messages.forEach((msg) => list.createEl('li', { text: msg }));
-    contentEl.createEl('p', {
-      cls: 'mod-muted',
-      text: 'Check source files for skipped heading levels, multiple H1s, or Dataview blocks.',
-    });
+    contentEl.createEl('p', { cls: 'mod-muted', text: 'Check source files for skipped heading levels, multiple H1s, or Dataview blocks.' });
     this.modalEl.createDiv('modal-button-container', (el) => {
-      el.createEl('button', { text: 'Close', cls: 'mod-cta' })
-        .addEventListener('click', () => this.close());
+      el.createEl('button', { text: 'Close', cls: 'mod-cta' }).addEventListener('click', () => this.close());
     });
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  private tog(parent: HTMLElement, name: string, desc: string, get: () => boolean, set: (v: boolean) => void) {
+    new Setting(parent).setName(name).setDesc(desc).addToggle((t) => t.setValue(get()).onChange((v) => set(v)));
+  }
+
+  private txt(parent: HTMLElement, name: string, desc: string, placeholder: string, get: () => string, set: (v: string) => void) {
+    new Setting(parent).setName(name).setDesc(desc)
+      .addText((t) => t.setPlaceholder(placeholder).setValue(get()).onChange((v) => set(v)));
   }
 }
