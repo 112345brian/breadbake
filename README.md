@@ -8,6 +8,8 @@
 Compile your Obsidian notes into larger documents. Focused on simplicity, with community improvements baked in. For more complex compilation scenarios, try <a href="https://github.com/kevboh/longform">kevboh's longform plugin</a>.
 </p>
 
+> **Disclaimer:** This plugin was vibe coded with AI assistance (Claude). Use at your own risk — review the code before using it in a production vault.
+
 <br>
 
 ---
@@ -73,3 +75,10 @@ This fork incorporates the best ideas from the community:
 - **Task & tag removal** — optional cleanup of tasks and tags for clean export
 - **Block-embed fix** — fixes a bug where partial `![[file#^blockid]]` references could corrupt the output
 - **Better error messages** — recursive bake failures report which file caused the problem
+
+## Credits
+
+- [**obsidian-easy-bake**](https://github.com/obsidian-community/obsidian-easy-bake) by [@mgmeyers](https://github.com/mgmeyers) — the original plugin this fork is based on (GPL-3.0)
+- [**almarzn/obsidian-easy-bake**](https://github.com/almarzn/obsidian-easy-bake) — footnote reindexing, block-embed fix, error handling
+- [**dryezl/obsidian-easy-bake**](https://github.com/dryezl/obsidian-easy-bake) — task/tag removal, inline link preservation
+- [**g-martin772/obsidian-master-bake**](https://github.com/g-martin772/obsidian-master-bake) — heading level adjustment, Excalidraw exclusion
