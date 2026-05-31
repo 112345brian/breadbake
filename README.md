@@ -5,56 +5,92 @@
 <h1 align="center">Bripey Bake</h1>
 
 <p align="center">
-Compile your Obsidian notes into larger documents. Focused on simplicity, with community improvements baked in. For more complex compilation scenarios, try <a href="https://github.com/kevboh/longform">kevboh's longform plugin</a>.
+  Compile Obsidian notes into a single document — three ways.
 </p>
 
-> **Disclaimer:** This plugin was vibe coded with AI assistance (Claude). Use at your own risk — review the code before using it in a production vault.
-
-<br>
+<p align="center">
+  <em>Fork of <a href="https://github.com/obsidian-community/obsidian-easy-bake">obsidian-easy-bake</a> · vibe coded with Claude · use at your own risk</em>
+</p>
 
 ---
 
-Two commands are available in [Obsidian's command palette](https://help.obsidian.md/Plugins/Command+palette):
+Bripey Bake adds three commands to [Obsidian's command palette](https://help.obsidian.md/Plugins/Command+palette), each representing a different way to assemble notes into a single output file.
 
-- **Bake current file** — follow wikilinks in the current file recursively and inline them into a single document
-- **Bake project** — gather all notes that declare themselves part of a named project via frontmatter, order them, and compile into a single document
-- **Bake from breadcrumbs** — read `down` (or any configured field) from the current file's frontmatter to discover the document hierarchy, preview it, then bake with heading levels derived from depth
+---
 
-Links and embeds that exist on their own line will be copied into the compiled document. Inline links will be replaced with the link's text. This process is recursive — links in linked files are also copied into the final document.
+## Commands
 
-For example,
+### Bake current file
+
+The classic approach. Starting from the current note, any `[[wikilink]]` or `![[embed]]` that sits on its own line is replaced inline with the full contents of that file. The process is recursive — links inside linked files are also expanded.
 
 ```markdown
 ## Section One
 
-[[File one]]
-[[File two]]
+[[Chapter One]]
+[[Chapter Two]]
 
 ## Section Three
 
-This is an [[File three|inline link]].
+This is an [[inline link]].
 
-[[File four]]
+[[Chapter Four]]
 ```
 
-will be compiled to:
+Becomes:
 
 ```markdown
 ## Section One
 
-Content of file one
-Content of file two
+Content of chapter one…
+Content of chapter two…
 
 ## Section Three
 
 This is an inline link.
 
-Content of file four
+Content of chapter four…
 ```
 
-## Breadcrumb bake
+**Map of contents mode** changes how list-based links are handled. Instead of indenting the content, bullet depth determines the heading level of the embedded content — making a bulleted list of links behave like a document outline:
 
-Run **Bake from breadcrumbs** on any note. The plugin reads the configured `down` field (default: `down`) from the current file's frontmatter to discover children, then recurses into each child's frontmatter to build the full hierarchy.
+```markdown
+* [[Part One]]          → ## Part One
+   * [[Chapter 1]]      → ### Chapter 1
+   * [[Chapter 2]]      → ### Chapter 2
+* [[Part Two]]          → ## Part Two
+```
+
+---
+
+### Bake project
+
+Notes declare themselves as part of a named project in their own frontmatter. The plugin collects all matching notes, lets you order them, and compiles them in sequence.
+
+**Single-project** shorthand:
+```yaml
+---
+bake-project: my-novel
+bake-order: 3
+---
+```
+
+**Multi-project** map (a note can belong to multiple projects at independent positions):
+```yaml
+---
+bake:
+  my-novel: 3
+  another-project: 1
+---
+```
+
+Run **Bake project**, pick from the dropdown, reorder with ↑/↓ if needed, and hit Bake. The `bake-order` values are written back to each note's frontmatter so the order is remembered. Notes in a project are never inlined into each other even if they link to one another.
+
+---
+
+### Bake from breadcrumbs
+
+Uses frontmatter relationship fields — the same convention as the [Breadcrumbs plugin](https://github.com/SkepticMystic/breadcrumbs) — to infer document hierarchy. The plugin reads a configurable field (default: `down`) from the current file, recurses into each child's frontmatter, and builds a tree.
 
 ```yaml
 ---
@@ -66,7 +102,7 @@ down:
 ---
 ```
 
-The modal shows you the detected tree with heading levels before baking:
+Before baking, the modal shows the detected tree with heading-level badges:
 
 ```
 📄 My Novel (root)
@@ -77,71 +113,85 @@ The modal shows you the detected tree with heading levels before baking:
   H2  Epilogue
 ```
 
-Works with or without the [Breadcrumbs plugin](https://github.com/SkepticMystic/breadcrumbs) — any frontmatter field name works.
+Heading levels are determined by depth: depth 1 → H2, depth 2 → H3, and so on. A file's existing H1 is shifted to the right level; if it has no H1, the filename (or frontmatter `title`) is injected.
 
-**Combination mode** — when enabled, body wikilinks are also collected and merged with the frontmatter children, so you can mix frontmatter structure with MOC-style body lists.
+The Breadcrumbs plugin is **not required** — any frontmatter field name works. **Combination mode** also merges body wikilinks into the child list so you can mix frontmatter structure with MOC-style body lists.
 
-## Project bake
-
-Tag a note as part of a project using either format.
-
-**Single project** (flat):
-```yaml
 ---
-bake-project: my-novel
-bake-order: 3
----
-```
 
-**Multiple projects** (map):
-```yaml
----
-bake:
-  my-novel: 3
-  another-project: 1
----
-```
+## Output options
 
-The flat format is shorthand for when a note only belongs to one project. The map format lets a note appear in multiple projects at independent positions. Both are read and written correctly — switching between them is manual.
+All options are available as toggles in the bake modal. Settings persist between sessions.
 
-Run **Bake project**, pick your project from the dropdown, reorder scenes with ↑/↓ if needed, and hit Bake. The modal writes `bake-order` back to each note's frontmatter so the order is saved for next time.
-
-Notes in a project are never inlined into each other even if they link to one another — each scene appears exactly once in the output.
-
-## Settings
-
-All settings are available in the bake modal when you run the command.
+### What gets included
 
 | Setting | Default | Description |
 |---|---|---|
-| Bake embedded markdown | on | Include content of `![[embedded files]]` when on their own line |
-| Bake links | on | Include content of `[[links]]` when on their own line |
-| Bake links and embeds in lists | on | Also bake links/embeds that occupy an entire list bullet |
+| Bake embedded markdown | on | Expand `![[embedded files]]` when on their own line |
+| Bake links | on | Expand `[[links]]` when on their own line |
+| Bake links and embeds in lists | on | Also expand links that occupy an entire list bullet |
 | Bake file links | on | Convert `![[image.png]]` to an absolute `file://` path |
-| Adjust heading levels | on | Shift headings in embedded files so they nest correctly under the heading that contains the link |
-| Skip Excalidraw embeds | on | Leave `.excalidraw` links as-is rather than trying to embed them as text |
-| Preserve inline links | on | Keep `[[links]]` that appear inline without display text intact (useful for citation-style references) |
-| Remove tasks from output | off | Strip `- [ ]` and `- [x]` task lines from the compiled document |
-| Remove tags from output | off | Strip `#tags` from the compiled document |
-| Map of contents mode | off | Treat bulleted wikilinks as a document outline. Bullet depth determines heading level (top-level → H2, one indent → H3, …). The linked file's own headings shift down accordingly; if it has no H1, the filename is injected as the section heading. |
-| Structured mode | off | Automatically resolve ambiguous structure: inject a heading for any embedded file that lacks one (frontmatter `title` → filename), and skip empty files |
-| Review ambiguities before baking | off | Scan files first and walk through each ambiguous situation one-by-one so you can decide how to handle each individually. Takes precedence over structured mode. |
+| Skip Excalidraw embeds | on | Leave `.excalidraw` links as-is |
+| Preserve inline links | on | Keep `[[links]]` that appear inline without display text (e.g. citation-style references) rather than stripping their brackets |
 
-## Improvements over the original
+### Structure
 
-This fork incorporates the best ideas from the community:
+| Setting | Default | Description |
+|---|---|---|
+| Map of contents mode | off | Treat bulleted wikilinks as a document outline; bullet depth → heading level |
+| Adjust heading levels | on | Shift headings in embedded files so they nest under the heading containing the link |
+| Structured mode | off | Auto-inject a heading for any embedded file that lacks one (`title` frontmatter → filename), and skip empty files |
+| Review ambiguities before baking | off | Walk through each structural ambiguity (missing headings, empty files) one at a time before baking, with per-item choices. Takes precedence over structured mode. |
 
-- **Footnote reindexing** — footnotes across multiple merged files are renumbered globally so they never collide
-- **Heading level adjustment** — embedded files' headings shift down to nest cleanly under the heading that contains their link
-- **Excalidraw exclusion** — `.excalidraw` files are skipped rather than breaking the output
-- **Preserve inline links** — citation-style `[[links]]` without display text are left intact
-- **Task & tag removal** — optional cleanup of tasks and tags for clean export
-- **Block-embed fix** — fixes a bug where partial `![[file#^blockid]]` references could corrupt the output
-- **Better error messages** — recursive bake failures report which file caused the problem
+### Cleanup
+
+| Setting | Default | Description |
+|---|---|---|
+| Strip Obsidian comments | off | Remove `%%comment%%` and `<!-- HTML comment -->` blocks |
+| Remove tasks from output | off | Strip `- [ ]` and `- [x]` lines |
+| Remove tags from output | off | Strip `#tags` |
+| Convert wikilinks to Markdown links | off | Replace remaining `[[wikilinks]]` with standard `[text](file.md)` links for portability outside Obsidian |
+
+### Export
+
+| Setting | Default | Description |
+|---|---|---|
+| Merge frontmatter fields | off | Collect specified fields from all included files and merge into the output frontmatter. Accepts a comma-separated list of field names (default: `tags`). Arrays are deduplicated and sorted. |
+| Export images to assets folder | off | Copy referenced images into a `{name}_assets/` folder next to the output file and rewrite links to relative paths |
+
+---
+
+## Per-file settings
+
+Any note can override global settings for its own content by adding a `bake-settings` key to its frontmatter. Overrides apply only to that file; linked files still use global settings.
+
+```yaml
+---
+bake-settings:
+  removeTasks: true
+  stripComments: true
+---
+```
+
+---
+
+## Other features
+
+**Dry run** — a button in the bake modal that shows which files would be included, their nesting depth, and an estimated word count, without writing anything. A "Proceed to bake" button continues to the actual bake.
+
+**Copy to clipboard** — bakes in memory and copies to the clipboard without writing a file. Useful for pasting into Google Docs, email, etc.
+
+**Heading validation** — after every bake, the output is checked for common heading issues (multiple H1s, skipped levels). If any are found the modal stays open and lists them rather than silently closing.
+
+**Footnote reindexing** — footnote references across all merged files are renumbered globally so they never collide.
+
+---
 
 ## Credits
 
-- [**obsidian-easy-bake**](https://github.com/obsidian-community/obsidian-easy-bake) by [@mgmeyers](https://github.com/mgmeyers) — the original plugin this fork is based on (GPL-3.0)
+Built on top of, and incorporating ideas from:
+
+- [**obsidian-easy-bake**](https://github.com/obsidian-community/obsidian-easy-bake) by [@mgmeyers](https://github.com/mgmeyers) — the original plugin (GPL-3.0)
 - [**almarzn/obsidian-easy-bake**](https://github.com/almarzn/obsidian-easy-bake) — footnote reindexing, block-embed fix, error handling
 - [**dryezl/obsidian-easy-bake**](https://github.com/dryezl/obsidian-easy-bake) — task/tag removal, inline link preservation
 - [**g-martin772/obsidian-master-bake**](https://github.com/g-martin772/obsidian-master-bake) — heading level adjustment, Excalidraw exclusion
