@@ -102,6 +102,8 @@ export class ProjectBakeModal extends Modal {
       let outputName = defaultName;
 
       let watchAfterBake = false;
+      let manualExclusions = new Set<string>();
+
       new Setting(el)
         .setName('Watch for changes')
         .setDesc('Automatically rebake when source files are modified.')
@@ -109,7 +111,10 @@ export class ProjectBakeModal extends Modal {
 
       // --- Dry run ---
       el.createEl('button', { text: 'Dry run' }).addEventListener('click', () => {
-        new DryRunModal(app, 'project', null, scenes, settings, () => {}).open();
+        new DryRunModal(app, 'project', null, scenes, settings, (excluded) => {
+          manualExclusions = excluded;
+          btn.click();
+        }).open();
       });
 
       // --- Copy to clipboard ---
@@ -132,7 +137,12 @@ export class ProjectBakeModal extends Modal {
         // Write bake-order back to frontmatter for any reordering done in the modal
         await writeSceneOrders(app, selectedProject, scenes);
 
+        // Seed resolutions from manual dry-run exclusions
         let resolutions: ResolutionMap | undefined;
+        if (manualExclusions.size > 0) {
+          resolutions = new Map();
+          manualExclusions.forEach((path) => resolutions!.set(path, { action: 'skip' }));
+        }
 
         if (settings.reviewAmbiguities) {
           const ambiguities = detectAmbiguities(app, scenes.map((s) => s.file));

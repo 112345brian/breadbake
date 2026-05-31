@@ -340,9 +340,89 @@ export class BakeModal extends Modal {
           .setDesc('Automatically rebake when source files are modified.')
           .addToggle((t) => t.setValue(false).onChange((v) => (watchAfterBake = v)));
 
+        // Shared bake execution — called by both the Bake button and the Dry run proceed path
+        const executeBake = async (manualExclusions: Set<string> = new Set()) => {
+          disableBtn(btn);
+          if (!outputName) { enableBtn(btn); return; }
+
+          let resolutions: ResolutionMap | undefined;
+
+          // Seed manual exclusions from the dry run toggle list
+          if (manualExclusions.size > 0) {
+            resolutions = new Map();
+            manualExclusions.forEach((path) => resolutions!.set(path, { action: 'skip' }));
+          }
+
+          if (settings.reviewAmbiguities) {
+            const targets = await collectBakeTargets(this.app, file, new Set(), settings);
+            targets.delete(file);
+            const ambiguities = detectAmbiguities(this.app, [...targets]);
+            if (ambiguities.length > 0) {
+              const reviewed = await new Promise<ResolutionMap | null>((res) =>
+                new AmbiguityModal(this.app, ambiguities, res).open()
+              );
+              if (!reviewed) { enableBtn(btn); return; }
+              // Merge with manual exclusions
+              reviewed.forEach((v, k) => { if (!resolutions!.has(k)) resolutions!.set(k, v); });
+            }
+          }
+
+          const { vault } = this.app;
+          let baked = await bake(this.app, file, null, new Set(), settings, undefined, resolutions);
+
+          // Frontmatter merging
+          if (settings.mergeFrontmatter) {
+            const fields = settings.frontmatterMergeFields.split(',').map((f) => f.trim()).filter(Boolean);
+            const targets = await collectBakeTargets(this.app, file, new Set(), settings);
+            for (const field of fields) {
+              const tagSets = [...targets].map((f) => {
+                const val = this.app.metadataCache.getFileCache(f)?.frontmatter?.[field];
+                if (!val) return [];
+                return Array.isArray(val) ? val.map(String) : [String(val)];
+              });
+              if (field === 'tags') baked = mergeTagsIntoFrontmatter(baked, tagSets);
+            }
+          }
+
+          const nextPath = outputFolder + outputName + '.md';
+          let existing = vault.getAbstractFileByPath(nextPath);
+          if (existing instanceof TFile) {
+            await vault.modify(existing, baked);
+          } else {
+            existing = await vault.create(nextPath, baked);
+          }
+
+          baked = await applyTemplates(this.app, baked, settings);
+
+          if (settings.exportImages && existing instanceof TFile) {
+            baked = await exportImages(this.app, baked, existing.parent?.path ?? '', outputName);
+            await vault.modify(existing, baked);
+          }
+
+          if (watchAfterBake && existing instanceof TFile) {
+            const sourceFiles = await collectBakeTargets(this.app, file, new Set(), settings);
+            plugin.watcher.add({ outputPath: nextPath, mode: 'link', rootFile: file, settings: { ...settings } }, sourceFiles);
+          }
+
+          if (existing instanceof TFile) {
+            this.app.workspace.getLeaf('tab').openFile(existing);
+          }
+
+          const warnings = runAllValidations(baked).filter(
+            (w) => w.kind !== 'dataview-block' || settings.dataviewHandling === 'warn'
+          );
+          if (warnings.length > 0) {
+            this.showWarnings(warnings.map((w) => w.message));
+            return;
+          }
+          this.close();
+        };
+
         // --- Dry run ---
         el.createEl('button', { text: 'Dry run' }).addEventListener('click', () => {
-          new DryRunModal(this.app, 'link', file, null, settings, () => this.close()).open();
+          new DryRunModal(this.app, 'link', file, null, settings, (excluded) => {
+            executeBake(excluded);
+          }).open();
         });
 
         // --- Copy to clipboard ---
@@ -358,86 +438,10 @@ export class BakeModal extends Modal {
           text: 'Bake',
         });
 
-        activeWindow.setTimeout(() => {
-          // Set focus so users can quickly press enter
-          btn.focus();
-        });
+        activeWindow.setTimeout(() => btn.focus());
 
-        btn.addEventListener('click', async () => {
-          disableBtn(btn);
-          if (!outputName) { enableBtn(btn); return; }
+        btn.addEventListener('click', () => executeBake());
 
-          let resolutions: ResolutionMap | undefined;
-
-          if (settings.reviewAmbiguities) {
-            const targets = await collectBakeTargets(this.app, file, new Set(), settings);
-            targets.delete(file); // don't prompt for the root file itself
-            const ambiguities = detectAmbiguities(this.app, [...targets]);
-            if (ambiguities.length > 0) {
-              resolutions = await new Promise<ResolutionMap | null>((res) =>
-                new AmbiguityModal(this.app, ambiguities, res).open()
-              ) ?? undefined;
-              if (!resolutions) { enableBtn(btn); return; } // user cancelled
-            }
-          }
-
-          if (outputName) {
-            const { vault } = this.app;
-            let baked = await bake(this.app, file, null, new Set(), settings, undefined, resolutions);
-
-            // Frontmatter merging
-            if (settings.mergeFrontmatter) {
-              const fields = settings.frontmatterMergeFields.split(',').map((f) => f.trim()).filter(Boolean);
-              const targets = await collectBakeTargets(this.app, file, new Set(), settings);
-              for (const field of fields) {
-                const tagSets = [...targets].map((f) => {
-                  const val = this.app.metadataCache.getFileCache(f)?.frontmatter?.[field];
-                  if (!val) return [];
-                  return Array.isArray(val) ? val.map(String) : [String(val)];
-                });
-                if (field === 'tags') baked = mergeTagsIntoFrontmatter(baked, tagSets);
-              }
-            }
-
-            const nextPath = outputFolder + outputName + '.md';
-            let existing = vault.getAbstractFileByPath(nextPath);
-
-            if (existing instanceof TFile) {
-              await vault.modify(existing, baked);
-            } else {
-              existing = await vault.create(nextPath, baked);
-            }
-
-            // Template injection
-            baked = await applyTemplates(this.app, baked, settings);
-
-            // Image export
-            if (settings.exportImages && existing instanceof TFile) {
-              baked = await exportImages(this.app, baked, existing.parent?.path ?? '', outputName);
-              await vault.modify(existing, baked);
-            }
-
-            if (existing instanceof TFile) {
-              this.app.workspace.getLeaf('tab').openFile(existing);
-            }
-
-            // Start watching if requested
-            if (watchAfterBake && existing instanceof TFile) {
-              const sourceFiles = await collectBakeTargets(this.app, file, new Set(), settings);
-              plugin.watcher.add({ outputPath: nextPath, mode: 'link', rootFile: file, settings: { ...settings } }, sourceFiles);
-            }
-
-            const warnings = runAllValidations(baked).filter(
-              (w) => w.kind !== 'dataview-block' || settings.dataviewHandling === 'warn'
-            );
-            if (warnings.length > 0) {
-              this.showWarnings(warnings.map((w) => w.message));
-              return;
-            }
-          }
-
-          this.close();
-        });
 
         setting.addText((text) =>
           text.setValue(outputName).onChange((value) => {

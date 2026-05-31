@@ -64,3 +64,22 @@ body:not(.is-mobile) .easy-bake-modal .modal-content {
 	font-size: 0.8em;
 	margin-left: 4px;
 }
+
+.bripey-dryrun-entry {
+	cursor: pointer;
+	border-radius: 4px;
+	transition: background 0.1s;
+}
+
+.bripey-dryrun-entry:hover {
+	background: var(--background-modifier-hover);
+}
+
+.bripey-excluded .bripey-scene-name {
+	text-decoration: line-through;
+	opacity: 0.4;
+}
+
+.bripey-excluded .bripey-dryrun-via {
+	opacity: 0.3;
+}
