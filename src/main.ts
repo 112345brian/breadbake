@@ -34,6 +34,7 @@ export interface BakeSettings {
   maxDepth: number;
   includePattern: string;
   excludePattern: string;
+  bakeMode: 'link' | 'breadcrumb';
 }
 
 const DEFAULT_SETTINGS: BakeSettings = {
@@ -64,6 +65,7 @@ const DEFAULT_SETTINGS: BakeSettings = {
   maxDepth: 0,
   includePattern: '',
   excludePattern: '',
+  bakeMode: 'link',
 };
 
 export default class EasyBake extends Plugin {
