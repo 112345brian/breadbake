@@ -14,6 +14,14 @@
 
 ---
 
+## Why Bripey Bake?
+
+The upstream plugin is called "Easy Bake" — and it is easy, which is great. But this fork has grown well beyond a simple wikilink expander. It now has three distinct bake modes, project and breadcrumb-based document assembly, per-file settings, interactive ambiguity resolution, image export, heading validation, and a test suite. Calling it "Easy Bake" started to feel like false advertising.
+
+It pulls heavily from several community forks (all credited below), so the "easy-bake" lineage still felt right — but it needed a new name. And since my name is Bri, and this thing is pretty squarely mine at this point — it's **Bripey Bake**.
+
+---
+
 Bripey Bake adds three commands to [Obsidian's command palette](https://help.obsidian.md/Plugins/Command+palette), each representing a different way to assemble notes into a single output file.
 
 ---
