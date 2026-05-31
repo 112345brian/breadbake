@@ -32,12 +32,19 @@ function getContextHeadingLevel(textBefore: string): number {
   return matches.length ? matches[matches.length - 1][0].length : 0;
 }
 
-function adjustHeadings(md: string, hostLevel: number): string {
-  if (!hostLevel) return md;
+function adjustHeadings(md: string, shift: number): string {
+  if (!shift) return md;
   return md.replace(/^(#{1,6}) /gm, (_, hashes) => {
-    const newLevel = Math.min(hashes.length + hostLevel, 6);
+    const newLevel = Math.min(hashes.length + shift, 6);
     return '#'.repeat(newLevel) + ' ';
   });
+}
+
+// Converts leading whitespace to an indentation depth (tabs = 1 level, every 2 spaces = 1 level)
+function indentDepth(indent: string): number {
+  const tabs = (indent.match(/\t/g) || []).length;
+  const spaces = indent.length - tabs;
+  return tabs + Math.floor(spaces / 2);
 }
 
 export async function bake(
@@ -174,13 +181,36 @@ export async function bake(
       baked = ensureHeading(baked, title);
     }
 
-    if (settings.adjustHeadingLevels) {
-      baked = adjustHeadings(baked, getContextHeadingLevel(before));
+    if (settings.mocMode && listMatch) {
+      // MOC mode: treat bullet indentation as document outline depth.
+      // Shift all headings in the linked file so they nest at the right level,
+      // then inject a heading if the file had none.
+      const depth = indentDepth(listMatch[1]);
+      const shift = 1 + depth; // depth 0 → H1 becomes H2, depth 1 → H1 becomes H3, …
+      baked = adjustHeadings(baked, shift);
+      const hasH1 = app.metadataCache.getFileCache(linkedFile)?.headings?.some(
+        (h) => h.level === 1
+      );
+      if (!hasH1) {
+        const title =
+          target.displayText ||
+          app.metadataCache.getFileCache(linkedFile)?.frontmatter?.title ||
+          linkedFile.basename;
+        baked = `${'#'.repeat(2 + depth)} ${title}\n\n${baked}`;
+      }
+      replaceTarget(baked);
+    } else {
+      if (settings.adjustHeadingLevels) {
+        baked = adjustHeadings(baked, getContextHeadingLevel(before));
+      }
+      replaceTarget(listMatch ? applyIndent(stripFirstBullet(baked), listMatch[1]) : baked);
     }
+  }
 
-    replaceTarget(
-      listMatch ? applyIndent(stripFirstBullet(baked), listMatch[1]) : baked
-    );
+  // Strip the dangling bullet markers left in front of headings after MOC expansion.
+  // e.g. "* ## Chapter 1" → "## Chapter 1"
+  if (settings.mocMode) {
+    text = text.replace(/^[ \t]*[-*+] +(#{1,6} )/gm, '$1');
   }
 
   if (settings.removeTasks) text = removeTasks(text);

@@ -93,6 +93,7 @@ All settings are available in the bake modal when you run the command.
 | Preserve inline links | on | Keep `[[links]]` that appear inline without display text intact (useful for citation-style references) |
 | Remove tasks from output | off | Strip `- [ ]` and `- [x]` task lines from the compiled document |
 | Remove tags from output | off | Strip `#tags` from the compiled document |
+| Map of contents mode | off | Treat bulleted wikilinks as a document outline. Bullet depth determines heading level (top-level → H2, one indent → H3, …). The linked file's own headings shift down accordingly; if it has no H1, the filename is injected as the section heading. |
 | Structured mode | off | Automatically resolve ambiguous structure: inject a heading for any embedded file that lacks one (frontmatter `title` → filename), and skip empty files |
 | Review ambiguities before baking | off | Scan files first and walk through each ambiguous situation one-by-one so you can decide how to handle each individually. Takes precedence over structured mode. |
 

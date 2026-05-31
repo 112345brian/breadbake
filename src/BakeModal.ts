@@ -142,6 +142,18 @@ export class BakeModal extends Modal {
       );
 
     new Setting(contentEl)
+      .setName('Map of contents mode')
+      .setDesc(
+        'Treat bulleted wikilinks as a document outline. Each link becomes a section heading whose level is derived from its list indentation (top-level → H2, one indent → H3, …). The linked file\'s own H1 shifts to that level; if it has none, the filename is used as the heading.'
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(settings.mocMode).onChange((value) => {
+          settings.mocMode = value;
+          plugin.saveSettings();
+        })
+      );
+
+    new Setting(contentEl)
       .setName('Structured mode')
       .setDesc(
         'Automatically resolve ambiguous structure: inject a heading for any embedded file that lacks one (using its frontmatter title or filename), and skip files that are empty after processing.'

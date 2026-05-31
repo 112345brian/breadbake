@@ -16,6 +16,7 @@ export interface BakeSettings {
   removeTags: boolean;
   structuredMode: boolean;
   reviewAmbiguities: boolean;
+  mocMode: boolean;
 }
 
 const DEFAULT_SETTINGS: BakeSettings = {
@@ -30,6 +31,7 @@ const DEFAULT_SETTINGS: BakeSettings = {
   removeTags: false,
   structuredMode: false,
   reviewAmbiguities: false,
+  mocMode: false,
 };
 
 export default class EasyBake extends Plugin {
