@@ -2,6 +2,7 @@ import { App, TFile } from 'obsidian';
 import { BakeSettings } from './main';
 import { bake } from './bake';
 import { ensureHeading, isEffectivelyEmpty, reindexNotes, sanitizeBakedContent } from './util';
+import { ResolutionMap } from './ambiguity';
 
 export interface ProjectScene {
   file: TFile;
@@ -89,7 +90,8 @@ export async function writeSceneOrders(
 export async function bakeProject(
   app: App,
   scenes: ProjectScene[],
-  settings: BakeSettings
+  settings: BakeSettings,
+  resolutions?: ResolutionMap
 ): Promise<string> {
   // Seed ancestors with all project files so they are never inlined into each other
   const projectFiles = new Set<TFile>(scenes.map((s) => s.file));
@@ -97,11 +99,14 @@ export async function bakeProject(
   const parts: string[] = [];
 
   for (const scene of scenes) {
+    const resolution = resolutions?.get(scene.file.path);
+    if (resolution?.action === 'skip') continue;
+
     let baked: string;
     try {
       baked = sanitizeBakedContent(
         reindexNotes(
-          await bake(app, scene.file, null, new Set(projectFiles), settings, footnoteCounter),
+          await bake(app, scene.file, null, new Set(projectFiles), settings, footnoteCounter, resolutions),
           () => String(footnoteCounter.index++)
         )
       );
@@ -109,7 +114,9 @@ export async function bakeProject(
       throw new Error(`Error baking scene '${scene.file.path}': ${(e as Error).message}`);
     }
 
-    if (settings.structuredMode) {
+    if (resolution?.action === 'inject-heading') {
+      baked = ensureHeading(baked, resolution.title);
+    } else if (settings.structuredMode) {
       if (isEffectivelyEmpty(baked)) continue;
       const title =
         app.metadataCache.getFileCache(scene.file)?.frontmatter?.title ||

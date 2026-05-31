@@ -19,6 +19,7 @@ import {
   sanitizeBakedContent,
   stripFirstBullet,
 } from './util';
+import { ResolutionMap } from './ambiguity';
 
 const lineStartRE = /(?:^|\n) *$/;
 const listLineStartRE = /(?:^|\n)([ \t]*)(?:[-*+]|[0-9]+[.)]) +$/;
@@ -45,7 +46,8 @@ export async function bake(
   subpath: string | null,
   ancestors: Set<TFile>,
   settings: BakeSettings,
-  footnoteCounter: { index: number } = { index: 1 }
+  footnoteCounter: { index: number } = { index: 1 },
+  resolutions?: ResolutionMap
 ) {
   const { vault, metadataCache } = app;
 
@@ -143,11 +145,18 @@ export async function bake(
     }
 
     // Recurse and bake the linked file...
+    // Check pre-computed resolution (from interactive or auto structured mode)
+    const resolution = resolutions?.get(linkedFile.path);
+    if (resolution?.action === 'skip') {
+      replaceTarget('');
+      continue;
+    }
+
     let baked: string;
     try {
       baked = sanitizeBakedContent(
         reindexNotes(
-          await bake(app, linkedFile, subpath, newAncestors, settings, footnoteCounter),
+          await bake(app, linkedFile, subpath, newAncestors, settings, footnoteCounter, resolutions),
           () => String(footnoteCounter.index++)
         )
       );
@@ -155,8 +164,10 @@ export async function bake(
       throw new Error(`Error baking '${linkedFile.path}': ${(e as Error).message}`);
     }
 
-    if (settings.structuredMode) {
-      if (isEffectivelyEmpty(baked)) continue;
+    if (resolution?.action === 'inject-heading') {
+      baked = ensureHeading(baked, resolution.title);
+    } else if (settings.structuredMode) {
+      if (isEffectivelyEmpty(baked)) { replaceTarget(''); continue; }
       const title =
         app.metadataCache.getFileCache(linkedFile)?.frontmatter?.title ||
         linkedFile.basename;

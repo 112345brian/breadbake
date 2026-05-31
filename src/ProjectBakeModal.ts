@@ -1,6 +1,8 @@
 import { App, Modal, Setting, TFile } from 'obsidian';
 import { BakeSettings } from './main';
 import { ProjectScene, bakeProject, getKnownProjects, getProjectScenes, writeSceneOrders } from './bakeProject';
+import { AmbiguityModal } from './AmbiguityModal';
+import { ResolutionMap, autoResolve, detectAmbiguities } from './ambiguity';
 import { getWordCount } from './util';
 
 export class ProjectBakeModal extends Modal {
@@ -106,7 +108,27 @@ export class ProjectBakeModal extends Modal {
         // Write bake-order back to frontmatter for any reordering done in the modal
         await writeSceneOrders(app, selectedProject, scenes);
 
-        const baked = await bakeProject(app, scenes, settings);
+        let resolutions: ResolutionMap | undefined;
+
+        if (settings.reviewAmbiguities) {
+          const ambiguities = detectAmbiguities(app, scenes.map((s) => s.file));
+          if (ambiguities.length > 0) {
+            resolutions = await new Promise<ResolutionMap | null>((res) =>
+              new AmbiguityModal(app, ambiguities, res).open()
+            ) ?? undefined;
+            if (!resolutions) {
+              btn.disabled = false;
+              btn.removeClass('mod-muted');
+              btn.addClass('mod-cta');
+              return;
+            }
+          }
+        } else if (settings.structuredMode) {
+          const ambiguities = detectAmbiguities(app, scenes.map((s) => s.file));
+          resolutions = autoResolve(ambiguities);
+        }
+
+        const baked = await bakeProject(app, scenes, settings, resolutions);
         const folder = currentFile?.parent?.path ? currentFile.parent.path + '/' : '';
         const nextPath = folder + outputName + '.md';
         const { vault } = app;

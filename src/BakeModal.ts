@@ -1,6 +1,8 @@
 import { Modal, Setting, TFile } from 'obsidian';
 
 import { bake } from './bake';
+import { AmbiguityModal } from './AmbiguityModal';
+import { ResolutionMap, autoResolve, collectBakeTargets, detectAmbiguities } from './ambiguity';
 import EasyBake from './main';
 import { getWordCount } from './util';
 
@@ -142,11 +144,23 @@ export class BakeModal extends Modal {
     new Setting(contentEl)
       .setName('Structured mode')
       .setDesc(
-        'Resolve ambiguous structure: inject a heading for any embedded file that lacks one (using its frontmatter title or filename), and skip files that are empty after processing.'
+        'Automatically resolve ambiguous structure: inject a heading for any embedded file that lacks one (using its frontmatter title or filename), and skip files that are empty after processing.'
       )
       .addToggle((toggle) =>
         toggle.setValue(settings.structuredMode).onChange((value) => {
           settings.structuredMode = value;
+          plugin.saveSettings();
+        })
+      );
+
+    new Setting(contentEl)
+      .setName('Review ambiguities before baking')
+      .setDesc(
+        'Scan files first and walk through each ambiguous situation — missing headings, empty files — so you can decide how to handle each one individually.'
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(settings.reviewAmbiguities).onChange((value) => {
+          settings.reviewAmbiguities = value;
           plugin.saveSettings();
         })
       );
@@ -180,9 +194,25 @@ export class BakeModal extends Modal {
 
         btn.addEventListener('click', async () => {
           disableBtn(btn);
+          if (!outputName) { enableBtn(btn); return; }
+
+          let resolutions: ResolutionMap | undefined;
+
+          if (settings.reviewAmbiguities) {
+            const targets = await collectBakeTargets(this.app, file, new Set(), settings);
+            targets.delete(file); // don't prompt for the root file itself
+            const ambiguities = detectAmbiguities(this.app, [...targets]);
+            if (ambiguities.length > 0) {
+              resolutions = await new Promise<ResolutionMap | null>((res) =>
+                new AmbiguityModal(this.app, ambiguities, res).open()
+              ) ?? undefined;
+              if (!resolutions) { enableBtn(btn); return; } // user cancelled
+            }
+          }
+
           if (outputName) {
             const { vault } = this.app;
-            const baked = await bake(this.app, file, null, new Set(), settings);
+            const baked = await bake(this.app, file, null, new Set(), settings, undefined, resolutions);
             const nextPath = outputFolder + outputName + '.md';
             let existing = vault.getAbstractFileByPath(nextPath);
 

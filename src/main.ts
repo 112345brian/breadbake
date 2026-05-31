@@ -15,6 +15,7 @@ export interface BakeSettings {
   removeTasks: boolean;
   removeTags: boolean;
   structuredMode: boolean;
+  reviewAmbiguities: boolean;
 }
 
 const DEFAULT_SETTINGS: BakeSettings = {
@@ -28,6 +29,7 @@ const DEFAULT_SETTINGS: BakeSettings = {
   removeTasks: false,
   removeTags: false,
   structuredMode: false,
+  reviewAmbiguities: false,
 };
 
 export default class EasyBake extends Plugin {
