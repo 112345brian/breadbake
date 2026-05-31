@@ -53,8 +53,17 @@ Content of file four
 
 ## Project bake
 
-Add a `bake` map to any note's frontmatter, with one entry per project the note belongs to. The value is its position in that project:
+Tag a note as part of a project using either format.
 
+**Single project** (flat):
+```yaml
+---
+bake-project: my-novel
+bake-order: 3
+---
+```
+
+**Multiple projects** (map):
 ```yaml
 ---
 bake:
@@ -63,7 +72,7 @@ bake:
 ---
 ```
 
-A note can belong to any number of projects at independent positions.
+The flat format is shorthand for when a note only belongs to one project. The map format lets a note appear in multiple projects at independent positions. Both are read and written correctly — switching between them is manual.
 
 Run **Bake project**, pick your project from the dropdown, reorder scenes with ↑/↓ if needed, and hit Bake. The modal writes `bake-order` back to each note's frontmatter so the order is saved for next time.
 
