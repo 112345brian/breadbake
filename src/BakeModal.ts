@@ -77,14 +77,21 @@ export class BakeModal extends Modal {
 
     // ── Mode tabs ──────────────────────────────────────────────────────────
     const tabBar = contentEl.createDiv('bripey-mode-tabs');
+    const tabs: HTMLButtonElement[] = [];
     const makeTab = (label: string, mode: 'link' | 'breadcrumb') => {
-      const tab = tabBar.createEl('button', { text: label, cls: 'bripey-mode-tab' });
+      const tab = tabBar.createEl('button', { text: label, cls: 'bripey-mode-tab' }) as HTMLButtonElement;
       if (this.currentMode === mode) tab.addClass('is-active');
+      tabs.push(tab);
       tab.addEventListener('click', () => {
         this.currentMode = mode;
         settings.bakeMode = mode;
         this.plugin.saveSettings();
-        this.render();
+        // Only swap the mode section — don't re-render the whole modal
+        tabs.forEach((t) => t.removeClass('is-active'));
+        tab.addClass('is-active');
+        this.modeSectionEl.empty();
+        if (mode === 'link') this.renderLinkModeSettings(this.modeSectionEl);
+        else this.renderBreadcrumbModeSettings(this.modeSectionEl);
       });
     };
     makeTab('Link bake', 'link');
