@@ -2,6 +2,7 @@ import { Plugin } from 'obsidian';
 
 import { BakeModal } from './BakeModal';
 import { ProjectBakeModal } from './ProjectBakeModal';
+import { BreadcrumbBakeModal } from './BreadcrumbBakeModal';
 import { EasyBakeApi } from './api';
 
 export interface BakeSettings {
@@ -22,6 +23,8 @@ export interface BakeSettings {
   mergeFrontmatter: boolean;
   frontmatterMergeFields: string;
   exportImages: boolean;
+  breadcrumbDownField: string;
+  breadcrumbCombineWithMoc: boolean;
 }
 
 const DEFAULT_SETTINGS: BakeSettings = {
@@ -42,6 +45,8 @@ const DEFAULT_SETTINGS: BakeSettings = {
   mergeFrontmatter: false,
   frontmatterMergeFields: 'tags',
   exportImages: false,
+  breadcrumbDownField: 'down',
+  breadcrumbCombineWithMoc: false,
 };
 
 export default class EasyBake extends Plugin {
@@ -79,6 +84,16 @@ export default class EasyBake extends Plugin {
       name: 'Bake project',
       callback: () => {
         new ProjectBakeModal(this.app, this).open();
+      },
+    });
+
+    this.addCommand({
+      id: 'bake-breadcrumbs',
+      name: 'Bake from breadcrumbs',
+      checkCallback: (checking) => {
+        const file = this.activeMarkdownFile;
+        if (checking || !file) return !!file;
+        new BreadcrumbBakeModal(this.app, file, this.settings, this).open();
       },
     });
   }

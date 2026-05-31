@@ -18,6 +18,7 @@ Two commands are available in [Obsidian's command palette](https://help.obsidian
 
 - **Bake current file** — follow wikilinks in the current file recursively and inline them into a single document
 - **Bake project** — gather all notes that declare themselves part of a named project via frontmatter, order them, and compile into a single document
+- **Bake from breadcrumbs** — read `down` (or any configured field) from the current file's frontmatter to discover the document hierarchy, preview it, then bake with heading levels derived from depth
 
 Links and embeds that exist on their own line will be copied into the compiled document. Inline links will be replaced with the link's text. This process is recursive — links in linked files are also copied into the final document.
 
@@ -50,6 +51,35 @@ This is an inline link.
 
 Content of file four
 ```
+
+## Breadcrumb bake
+
+Run **Bake from breadcrumbs** on any note. The plugin reads the configured `down` field (default: `down`) from the current file's frontmatter to discover children, then recurses into each child's frontmatter to build the full hierarchy.
+
+```yaml
+---
+title: My Novel
+down:
+  - "[[Part One]]"
+  - "[[Part Two]]"
+  - "[[Epilogue]]"
+---
+```
+
+The modal shows you the detected tree with heading levels before baking:
+
+```
+📄 My Novel (root)
+  H2  Part One
+    H3  Chapter 1
+    H3  Chapter 2
+  H2  Part Two
+  H2  Epilogue
+```
+
+Works with or without the [Breadcrumbs plugin](https://github.com/SkepticMystic/breadcrumbs) — any frontmatter field name works.
+
+**Combination mode** — when enabled, body wikilinks are also collected and merged with the frontmatter children, so you can mix frontmatter structure with MOC-style body lists.
 
 ## Project bake
 
