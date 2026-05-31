@@ -1,5 +1,4 @@
-.easy-bake-modal .modal {
-	width: min(1080px, 94vw);
+.easy-bake-modal {
 	overflow: hidden;
 }
 
@@ -7,7 +6,8 @@
 	overflow: hidden;
 	display: flex;
 	flex-direction: column;
-	max-height: 82vh;
+	flex: 1;
+	min-height: 0;
 }
 
 /* ── Two-column body ─────────────────────────────────────── */
