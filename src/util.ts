@@ -81,6 +81,23 @@ export function reindexNotes(text: string, next: () => string): string {
   });
 }
 
+/**
+ * Returns true if `filePath` passes the include/exclude pattern filters.
+ * Patterns are case-insensitive substrings of the file path.
+ * - includePattern: if non-empty, path must contain it
+ * - excludePattern: if non-empty, path must NOT contain it
+ */
+export function passesFilter(
+  filePath: string,
+  includePattern: string,
+  excludePattern: string
+): boolean {
+  const lower = filePath.toLowerCase();
+  if (includePattern && !lower.includes(includePattern.toLowerCase())) return false;
+  if (excludePattern && lower.includes(excludePattern.toLowerCase())) return false;
+  return true;
+}
+
 export function stripDataviewBlocks(text: string): string {
   return text
     .replace(/```dataview(?:js)?\n[\s\S]*?```/g, '')

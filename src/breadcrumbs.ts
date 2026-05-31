@@ -1,7 +1,7 @@
 import { App, TFile, parseLinktext } from 'obsidian';
 import { BakeSettings } from './main';
 import { bake } from './bake';
-import { reindexNotes, sanitizeBakedContent, stripDataviewBlocks } from './util';
+import { passesFilter, reindexNotes, sanitizeBakedContent, stripDataviewBlocks } from './util';
 import { ResolutionMap } from './ambiguity';
 import { isBCAvailable, getOutgoingBCEdges } from './bcIntegration';
 
@@ -133,6 +133,8 @@ export function buildBreadcrumbTree(
 
   const children = childFiles
     .filter((f) => !newAncestors.has(f))
+    .filter((f) => passesFilter(f.path, settings.includePattern, settings.excludePattern))
+    .filter((f) => !(settings.maxDepth > 0 && depth >= settings.maxDepth))
     .map((f) => buildBreadcrumbTree(app, f, newAncestors, settings, depth + 1));
 
   return { file, depth, children };

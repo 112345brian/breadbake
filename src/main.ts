@@ -31,6 +31,9 @@ export interface BakeSettings {
   dataviewHandling: 'keep' | 'strip' | 'warn';
   headerTemplate: string;
   footerTemplate: string;
+  maxDepth: number;
+  includePattern: string;
+  excludePattern: string;
 }
 
 const DEFAULT_SETTINGS: BakeSettings = {
@@ -58,6 +61,9 @@ const DEFAULT_SETTINGS: BakeSettings = {
   dataviewHandling: 'warn',
   headerTemplate: '',
   footerTemplate: '',
+  maxDepth: 0,
+  includePattern: '',
+  excludePattern: '',
 };
 
 export default class EasyBake extends Plugin {

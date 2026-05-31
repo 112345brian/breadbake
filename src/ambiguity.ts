@@ -1,4 +1,5 @@
 import { App, TFile, parseLinktext } from 'obsidian';
+import { passesFilter } from './util';
 import { BakeSettings } from './main';
 
 export type AmbiguityKind = 'no-heading' | 'empty-file';
@@ -61,7 +62,8 @@ export async function collectBakeTargets(
   app: App,
   file: TFile,
   ancestors: Set<TFile>,
-  settings: BakeSettings
+  settings: BakeSettings,
+  currentDepth = 0
 ): Promise<Set<TFile>> {
   const { metadataCache } = app;
   const cache = metadataCache.getFileCache(file);
@@ -74,14 +76,18 @@ export async function collectBakeTargets(
 
   const targets = new Set<TFile>([file]);
 
+  // Don't recurse further if we've hit the depth limit
+  if (settings.maxDepth > 0 && currentDepth >= settings.maxDepth) return targets;
+
   for (const target of [...links, ...embeds]) {
     const { path } = parseLinktext(target.link);
     const linked = metadataCache.getFirstLinkpathDest(path, file.path);
     if (!linked || linked.extension !== 'md') continue;
     if (newAncestors.has(linked)) continue;
     if (settings.skipExcalidraw && linked.name.endsWith('.excalidraw.md')) continue;
+    if (!passesFilter(linked.path, settings.includePattern, settings.excludePattern)) continue;
     targets.add(linked);
-    const nested = await collectBakeTargets(app, linked, newAncestors, settings);
+    const nested = await collectBakeTargets(app, linked, newAncestors, settings, currentDepth + 1);
     nested.forEach((f) => targets.add(f));
   }
 

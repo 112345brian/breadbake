@@ -41,6 +41,48 @@ export class BakeModal extends Modal {
       .createEl('p', { text: 'Input file: ' })
       .createEl('strong', { text: file.path });
 
+    contentEl.createEl('h3', { text: 'Scope' });
+
+    new Setting(contentEl)
+      .setName('Max depth')
+      .setDesc('How many levels of links to follow. 0 = unlimited. Set to 1 to only include files directly linked from this file.')
+      .addText((text) =>
+        text
+          .setValue(String(settings.maxDepth))
+          .onChange((value) => {
+            settings.maxDepth = Math.max(0, parseInt(value) || 0);
+            plugin.saveSettings();
+          })
+      );
+
+    new Setting(contentEl)
+      .setName('Include only files matching')
+      .setDesc('Case-insensitive substring filter. Only links whose file path contains this string will be followed and baked. Leave empty for no filter.')
+      .addText((text) =>
+        text
+          .setPlaceholder('e.g. Beyond Good and Evil')
+          .setValue(settings.includePattern)
+          .onChange((value) => {
+            settings.includePattern = value;
+            plugin.saveSettings();
+          })
+      );
+
+    new Setting(contentEl)
+      .setName('Exclude files matching')
+      .setDesc('Any link whose file path contains this string will be left as plain text rather than baked.')
+      .addText((text) =>
+        text
+          .setPlaceholder('e.g. /people/')
+          .setValue(settings.excludePattern)
+          .onChange((value) => {
+            settings.excludePattern = value;
+            plugin.saveSettings();
+          })
+      );
+
+    contentEl.createEl('h3', { text: 'What to include' });
+
     new Setting(contentEl)
       .setName('Bake embedded markdown')
       .setDesc(

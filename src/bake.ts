@@ -14,6 +14,7 @@ import {
   ensureHeading,
   extractSubpath,
   isEffectivelyEmpty,
+  passesFilter,
   reindexNotes,
   removeTags,
   removeTasks,
@@ -70,7 +71,8 @@ export async function bake(
   ancestors: Set<TFile>,
   settings: BakeSettings,
   footnoteCounter: { index: number } = { index: 1 },
-  resolutions?: ResolutionMap
+  resolutions?: ResolutionMap,
+  currentDepth = 0
 ) {
   const { vault, metadataCache } = app;
 
@@ -171,6 +173,18 @@ export async function bake(
       continue;
     }
 
+    // Depth limit: treat as plain text once we've hit the max
+    if (effectiveSettings.maxDepth > 0 && currentDepth >= effectiveSettings.maxDepth) {
+      replaceTarget(target.displayText || path);
+      continue;
+    }
+
+    // Pattern filters: treat as plain text if the linked file is out of scope
+    if (!passesFilter(linkedFile.path, effectiveSettings.includePattern, effectiveSettings.excludePattern)) {
+      replaceTarget(target.displayText || path);
+      continue;
+    }
+
     // Recurse and bake the linked file...
     // Check pre-computed resolution (from interactive or auto structured mode)
     const resolution = resolutions?.get(linkedFile.path);
@@ -183,7 +197,7 @@ export async function bake(
     try {
       baked = sanitizeBakedContent(
         reindexNotes(
-          await bake(app, linkedFile, subpath, newAncestors, settings, footnoteCounter, resolutions),
+          await bake(app, linkedFile, subpath, newAncestors, settings, footnoteCounter, resolutions, currentDepth + 1),
           () => String(footnoteCounter.index++)
         )
       );
