@@ -1,6 +1,7 @@
 import { Plugin } from 'obsidian';
 
 import { BakeModal } from './BakeModal';
+import { ProjectBakeModal } from './ProjectBakeModal';
 import { EasyBakeApi } from './api';
 
 export interface BakeSettings {
@@ -54,6 +55,14 @@ export default class EasyBake extends Plugin {
         const file = this.activeMarkdownFile;
         if (checking || !file) return !!file;
         new BakeModal(this, file).open();
+      },
+    });
+
+    this.addCommand({
+      id: 'bake-project',
+      name: 'Bake project',
+      callback: () => {
+        new ProjectBakeModal(this.app, this).open();
       },
     });
   }

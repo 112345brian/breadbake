@@ -14,7 +14,10 @@ Compile your Obsidian notes into larger documents. Focused on simplicity, with c
 
 ---
 
-Activate the plugin using the `Bake current file` command in [Obsidian's command palette](https://help.obsidian.md/Plugins/Command+palette).
+Two commands are available in [Obsidian's command palette](https://help.obsidian.md/Plugins/Command+palette):
+
+- **Bake current file** — follow wikilinks in the current file recursively and inline them into a single document
+- **Bake project** — gather all notes that declare themselves part of a named project via frontmatter, order them, and compile into a single document
 
 Links and embeds that exist on their own line will be copied into the compiled document. Inline links will be replaced with the link's text. This process is recursive — links in linked files are also copied into the final document.
 
@@ -47,6 +50,21 @@ This is an inline link.
 
 Content of file four
 ```
+
+## Project bake
+
+Add two frontmatter fields to any notes you want to compile as a project:
+
+```yaml
+---
+bake-project: my-novel
+bake-order: 3
+---
+```
+
+Run **Bake project**, pick your project from the dropdown, reorder scenes with ↑/↓ if needed, and hit Bake. The modal writes `bake-order` back to each note's frontmatter so the order is saved for next time.
+
+Notes in a project are never inlined into each other even if they link to one another — each scene appears exactly once in the output.
 
 ## Settings
 

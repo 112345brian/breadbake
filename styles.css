@@ -8,3 +8,29 @@ body:not(.is-mobile) .easy-bake-modal .modal-content {
 	flex-grow: 0;
 	flex-shrink: 1;
 }
+
+.bripey-scene-list {
+	margin: 8px 0;
+}
+
+.bripey-scene-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 4px 0;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.bripey-scene-name {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.bripey-scene-btns {
+	display: flex;
+	gap: 4px;
+	flex-shrink: 0;
+	margin-left: 8px;
+}
