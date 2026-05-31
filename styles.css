@@ -1,5 +1,5 @@
 .easy-bake-modal .modal {
-	width: min(780px, 92vw);
+	width: min(1080px, 94vw);
 	overflow: hidden;
 }
 
@@ -7,7 +7,7 @@
 	overflow: hidden;
 	display: flex;
 	flex-direction: column;
-	max-height: 80vh;
+	max-height: 82vh;
 }
 
 /* ── Two-column body ─────────────────────────────────────── */
@@ -20,16 +20,16 @@
 }
 
 .bripey-settings-col {
-	flex: 0 0 300px;
+	flex: 0 0 380px;
 	overflow-y: auto;
-	padding-right: 16px;
+	padding-right: 20px;
 	border-right: 1px solid var(--background-modifier-border);
 }
 
 .bripey-preview-col {
 	flex: 1;
 	overflow-y: auto;
-	padding-left: 16px;
+	padding-left: 20px;
 	min-width: 0;
 }
 
