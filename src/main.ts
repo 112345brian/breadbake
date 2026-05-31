@@ -17,6 +17,11 @@ export interface BakeSettings {
   structuredMode: boolean;
   reviewAmbiguities: boolean;
   mocMode: boolean;
+  stripComments: boolean;
+  convertWikilinks: boolean;
+  mergeFrontmatter: boolean;
+  frontmatterMergeFields: string;
+  exportImages: boolean;
 }
 
 const DEFAULT_SETTINGS: BakeSettings = {
@@ -32,6 +37,11 @@ const DEFAULT_SETTINGS: BakeSettings = {
   structuredMode: false,
   reviewAmbiguities: false,
   mocMode: false,
+  stripComments: false,
+  convertWikilinks: false,
+  mergeFrontmatter: false,
+  frontmatterMergeFields: 'tags',
+  exportImages: false,
 };
 
 export default class EasyBake extends Plugin {

@@ -10,6 +10,7 @@ import {
 import { BakeSettings } from './main';
 import {
   applyIndent,
+  convertWikilinksToMarkdown,
   ensureHeading,
   extractSubpath,
   isEffectivelyEmpty,
@@ -17,9 +18,23 @@ import {
   removeTags,
   removeTasks,
   sanitizeBakedContent,
+  stripComments,
   stripFirstBullet,
 } from './util';
 import { ResolutionMap } from './ambiguity';
+
+function resolveFileSettings(
+  app: App,
+  file: TFile,
+  globalSettings: BakeSettings
+): BakeSettings {
+  const fm = app.metadataCache.getFileCache(file)?.frontmatter;
+  const overrides = fm?.['bake-settings'];
+  if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)) {
+    return globalSettings;
+  }
+  return { ...globalSettings, ...(overrides as Partial<BakeSettings>) };
+}
 
 const lineStartRE = /(?:^|\n) *$/;
 const listLineStartRE = /(?:^|\n)([ \t]*)(?:[-*+]|[0-9]+[.)]) +$/;
@@ -57,6 +72,10 @@ export async function bake(
   resolutions?: ResolutionMap
 ) {
   const { vault, metadataCache } = app;
+
+  // Per-file settings override globals for this file's own content only.
+  // Recursive calls still use the original settings.
+  const effectiveSettings = resolveFileSettings(app, file, settings);
 
   let text = await vault.cachedRead(file);
   const cache = metadataCache.getFileCache(file);
@@ -209,12 +228,14 @@ export async function bake(
 
   // Strip the dangling bullet markers left in front of headings after MOC expansion.
   // e.g. "* ## Chapter 1" → "## Chapter 1"
-  if (settings.mocMode) {
+  if (effectiveSettings.mocMode) {
     text = text.replace(/^[ \t]*[-*+] +(#{1,6} )/gm, '$1');
   }
 
-  if (settings.removeTasks) text = removeTasks(text);
-  if (settings.removeTags) text = removeTags(text);
+  if (effectiveSettings.removeTasks) text = removeTasks(text);
+  if (effectiveSettings.removeTags) text = removeTags(text);
+  if (effectiveSettings.stripComments) text = stripComments(text);
+  if (effectiveSettings.convertWikilinks) text = convertWikilinksToMarkdown(text);
 
   return text;
 }

@@ -1,10 +1,12 @@
-import { Modal, Setting, TFile } from 'obsidian';
+import { Modal, Notice, Setting, TFile } from 'obsidian';
 
 import { bake } from './bake';
 import { AmbiguityModal } from './AmbiguityModal';
 import { ResolutionMap, autoResolve, collectBakeTargets, detectAmbiguities } from './ambiguity';
+import { DryRunModal } from './DryRunModal';
+import { exportImages } from './imageExport';
 import EasyBake from './main';
-import { getWordCount } from './util';
+import { getWordCount, mergeTagsIntoFrontmatter } from './util';
 import { validateHeadings } from './validate';
 
 function disableBtn(btn: HTMLButtonElement) {
@@ -143,6 +145,55 @@ export class BakeModal extends Modal {
       );
 
     new Setting(contentEl)
+      .setName('Strip Obsidian comments')
+      .setDesc('Remove %%comment%% and <!-- HTML comment --> blocks from the compiled output.')
+      .addToggle((toggle) =>
+        toggle.setValue(settings.stripComments).onChange((value) => {
+          settings.stripComments = value;
+          plugin.saveSettings();
+        })
+      );
+
+    new Setting(contentEl)
+      .setName('Convert wikilinks to Markdown links')
+      .setDesc('Replace remaining [[wikilinks]] in the output with standard [text](file.md) links for portability outside Obsidian.')
+      .addToggle((toggle) =>
+        toggle.setValue(settings.convertWikilinks).onChange((value) => {
+          settings.convertWikilinks = value;
+          plugin.saveSettings();
+        })
+      );
+
+    new Setting(contentEl)
+      .setName('Merge frontmatter fields')
+      .setDesc('Collect the specified fields from all included files and merge them into the output frontmatter.')
+      .addToggle((toggle) =>
+        toggle.setValue(settings.mergeFrontmatter).onChange((value) => {
+          settings.mergeFrontmatter = value;
+          plugin.saveSettings();
+        })
+      )
+      .addText((text) =>
+        text
+          .setPlaceholder('tags')
+          .setValue(settings.frontmatterMergeFields)
+          .onChange((value) => {
+            settings.frontmatterMergeFields = value;
+            plugin.saveSettings();
+          })
+      );
+
+    new Setting(contentEl)
+      .setName('Export images to assets folder')
+      .setDesc('Copy referenced images into a {name}_assets/ folder next to the output file and rewrite links to relative paths.')
+      .addToggle((toggle) =>
+        toggle.setValue(settings.exportImages).onChange((value) => {
+          settings.exportImages = value;
+          plugin.saveSettings();
+        })
+      );
+
+    new Setting(contentEl)
       .setName('Map of contents mode')
       .setDesc(
         'Treat bulleted wikilinks as a document outline. Each link becomes a section heading whose level is derived from its list indentation (top-level → H2, one indent → H3, …). The linked file\'s own H1 shifts to that level; if it has none, the filename is used as the heading.'
@@ -195,6 +246,22 @@ export class BakeModal extends Modal {
 
         if (outputFolder) outputFolder += '/';
 
+        // --- Dry run ---
+        el.createEl('button', { text: 'Dry run' }).addEventListener('click', () => {
+          new DryRunModal(this.app, 'link', file, null, settings, () => {
+            this.close();
+            // Re-open the bake modal via the plugin command
+          }).open();
+        });
+
+        // --- Copy to clipboard ---
+        el.createEl('button', { text: 'Copy to clipboard' }).addEventListener('click', async () => {
+          const baked = await bake(this.app, file, null, new Set(), settings);
+          await navigator.clipboard.writeText(baked);
+          new Notice('Baked content copied to clipboard.');
+          this.close();
+        });
+
         const btn = el.createEl('button', {
           cls: 'mod-cta',
           text: 'Bake',
@@ -225,7 +292,22 @@ export class BakeModal extends Modal {
 
           if (outputName) {
             const { vault } = this.app;
-            const baked = await bake(this.app, file, null, new Set(), settings, undefined, resolutions);
+            let baked = await bake(this.app, file, null, new Set(), settings, undefined, resolutions);
+
+            // Frontmatter merging
+            if (settings.mergeFrontmatter) {
+              const fields = settings.frontmatterMergeFields.split(',').map((f) => f.trim()).filter(Boolean);
+              const targets = await collectBakeTargets(this.app, file, new Set(), settings);
+              for (const field of fields) {
+                const tagSets = [...targets].map((f) => {
+                  const val = this.app.metadataCache.getFileCache(f)?.frontmatter?.[field];
+                  if (!val) return [];
+                  return Array.isArray(val) ? val.map(String) : [String(val)];
+                });
+                if (field === 'tags') baked = mergeTagsIntoFrontmatter(baked, tagSets);
+              }
+            }
+
             const nextPath = outputFolder + outputName + '.md';
             let existing = vault.getAbstractFileByPath(nextPath);
 
@@ -233,6 +315,12 @@ export class BakeModal extends Modal {
               await vault.modify(existing, baked);
             } else {
               existing = await vault.create(nextPath, baked);
+            }
+
+            // Image export (must run after file is written so we know the output path)
+            if (settings.exportImages && existing instanceof TFile) {
+              baked = await exportImages(this.app, baked, existing.parent?.path ?? '', outputName);
+              await vault.modify(existing, baked);
             }
 
             if (existing instanceof TFile) {

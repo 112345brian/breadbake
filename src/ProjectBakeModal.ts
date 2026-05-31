@@ -1,9 +1,11 @@
-import { App, Modal, Setting, TFile } from 'obsidian';
+import { App, Modal, Notice, Setting, TFile } from 'obsidian';
 import { BakeSettings } from './main';
 import { ProjectScene, bakeProject, getKnownProjects, getProjectScenes, writeSceneOrders } from './bakeProject';
 import { AmbiguityModal } from './AmbiguityModal';
 import { ResolutionMap, autoResolve, detectAmbiguities } from './ambiguity';
-import { getWordCount } from './util';
+import { DryRunModal } from './DryRunModal';
+import { exportImages } from './imageExport';
+import { getWordCount, mergeTagsIntoFrontmatter } from './util';
 import { validateHeadings } from './validate';
 
 export class ProjectBakeModal extends Modal {
@@ -97,6 +99,19 @@ export class ProjectBakeModal extends Modal {
       const defaultName = selectedProject.toLowerCase().replace(/\s+/g, '-') + '.baked';
       let outputName = defaultName;
 
+      // --- Dry run ---
+      el.createEl('button', { text: 'Dry run' }).addEventListener('click', () => {
+        new DryRunModal(app, 'project', null, scenes, settings, () => {}).open();
+      });
+
+      // --- Copy to clipboard ---
+      el.createEl('button', { text: 'Copy to clipboard' }).addEventListener('click', async () => {
+        const baked = await bakeProject(app, scenes, settings);
+        await navigator.clipboard.writeText(baked);
+        new Notice('Baked project copied to clipboard.');
+        this.close();
+      });
+
       const btn = el.createEl('button', { cls: 'mod-cta', text: 'Bake' });
 
       activeWindow.setTimeout(() => btn.focus());
@@ -129,8 +144,22 @@ export class ProjectBakeModal extends Modal {
           resolutions = autoResolve(ambiguities);
         }
 
-        const baked = await bakeProject(app, scenes, settings, resolutions);
-        const folder = currentFile?.parent?.path ? currentFile.parent.path + '/' : '';
+        let baked = await bakeProject(app, scenes, settings, resolutions);
+        // Frontmatter merging
+        if (settings.mergeFrontmatter) {
+          const fields = settings.frontmatterMergeFields.split(',').map((f) => f.trim()).filter(Boolean);
+          for (const field of fields) {
+            const tagSets = scenes.map((s) => {
+              const val = app.metadataCache.getFileCache(s.file)?.frontmatter?.[field];
+              if (!val) return [];
+              return Array.isArray(val) ? val.map(String) : [String(val)];
+            });
+            if (field === 'tags') baked = mergeTagsIntoFrontmatter(baked, tagSets);
+          }
+        }
+
+        const folderPath = currentFile?.parent?.path ?? '';
+        const folder = folderPath ? folderPath + '/' : '';
         const nextPath = folder + outputName + '.md';
         const { vault } = app;
         let existing = vault.getAbstractFileByPath(nextPath);
@@ -139,6 +168,12 @@ export class ProjectBakeModal extends Modal {
           await vault.modify(existing, baked);
         } else {
           existing = await vault.create(nextPath, baked);
+        }
+
+        // Image export
+        if (settings.exportImages && existing instanceof TFile) {
+          baked = await exportImages(app, baked, existing.parent?.path ?? '', outputName);
+          await vault.modify(existing, baked);
         }
 
         if (existing instanceof TFile) {

@@ -89,6 +89,40 @@ export function removeTags(text: string): string {
   return text.replace(/#\w[\w/-]*/g, '');
 }
 
+export function convertWikilinksToMarkdown(text: string): string {
+  // [[path#subpath|display]] → [display](path.md#subpath)
+  text = text.replace(
+    /(?<!!)\[\[([^\]|#]+)(#[^\]|]*)?\|([^\]]+)\]\]/g,
+    (_, path, sub, display) => `[${display.trim()}](${path.trim()}.md${sub ?? ''})`
+  );
+  // [[path#subpath]] or [[path]] → [path](path.md#subpath)
+  text = text.replace(
+    /(?<!!)\[\[([^\]|#]+)(#[^\]|]*)?\]\]/g,
+    (_, path, sub) => `[${path.trim()}](${path.trim()}.md${sub ?? ''})`
+  );
+  return text;
+}
+
+export function mergeTagsIntoFrontmatter(outputText: string, tagSets: string[][]): string {
+  const merged = [...new Set(tagSets.flat().map((t) => t.replace(/^#/, '').trim()))].sort();
+  if (merged.length === 0) return outputText;
+
+  const fmMatch = outputText.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/);
+
+  if (fmMatch) {
+    // Replace existing tags line or append to existing frontmatter
+    const inner = fmMatch[1];
+    const tagsLine = `tags: [${merged.join(', ')}]`;
+    const updatedInner = /^tags:/m.test(inner)
+      ? inner.replace(/^tags:.*$/m, tagsLine)
+      : `${inner}\n${tagsLine}`;
+    return outputText.replace(fmMatch[0], `---\n${updatedInner}\n---\n`);
+  } else {
+    // Prepend a new frontmatter block
+    return `---\ntags: [${merged.join(', ')}]\n---\n\n${outputText}`;
+  }
+}
+
 export function extractSubpath(
   content: string,
   subpathResult: HeadingSubpathResult | BlockSubpathResult,
