@@ -51,6 +51,34 @@ export function sanitizeBakedContent(text: string) {
   return stripBlockId(stripFrontmatter(text));
 }
 
+export function reindexNotes(text: string, next: () => string): string {
+  const references: Record<string, string> = {};
+
+  const withNewDefs = text.replace(/^\[\^(\S+?)]: /gm, (_, value) => {
+    if (references[value]) {
+      throw new Error(`Duplicate footnote reference '${value}'`);
+    }
+    const nextKey = next();
+    references[value] = nextKey;
+    return `[^${nextKey}]: `;
+  });
+
+  return withNewDefs.replace(/(?!^)\[\^(\S+?)]/gm, (match, value) => {
+    if (!references[value]) {
+      throw new Error(`Missing footnote reference '${value}'`);
+    }
+    return `[^${references[value]}]`;
+  });
+}
+
+export function removeTasks(text: string): string {
+  return text.replace(/\s*- \[[ xX]] .*(\n|$)/gm, '\n');
+}
+
+export function removeTags(text: string): string {
+  return text.replace(/#\w[\w/-]*/g, '');
+}
+
 export function extractSubpath(
   content: string,
   subpathResult: HeadingSubpathResult | BlockSubpathResult,

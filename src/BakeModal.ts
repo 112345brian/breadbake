@@ -83,6 +83,62 @@ export class BakeModal extends Modal {
         })
       );
 
+    new Setting(contentEl)
+      .setName('Adjust heading levels')
+      .setDesc(
+        'Shift headings in embedded files so they nest under the heading that contains the link.'
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(settings.adjustHeadingLevels).onChange((value) => {
+          settings.adjustHeadingLevels = value;
+          plugin.saveSettings();
+        })
+      );
+
+    new Setting(contentEl)
+      .setName('Skip Excalidraw embeds')
+      .setDesc(
+        'Leave ![[file.excalidraw]] links as-is instead of trying to embed them as text.'
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(settings.skipExcalidraw).onChange((value) => {
+          settings.skipExcalidraw = value;
+          plugin.saveSettings();
+        })
+      );
+
+    new Setting(contentEl)
+      .setName('Preserve inline links')
+      .setDesc(
+        'Keep [[links]] that appear inline without display text as-is, rather than stripping their brackets. Useful for citation-style references.'
+      )
+      .addToggle((toggle) =>
+        toggle.setValue(settings.preserveInlineLinks).onChange((value) => {
+          settings.preserveInlineLinks = value;
+          plugin.saveSettings();
+        })
+      );
+
+    new Setting(contentEl)
+      .setName('Remove tasks from output')
+      .setDesc('Strip task checkboxes (- [ ] and - [x]) from the compiled document.')
+      .addToggle((toggle) =>
+        toggle.setValue(settings.removeTasks).onChange((value) => {
+          settings.removeTasks = value;
+          plugin.saveSettings();
+        })
+      );
+
+    new Setting(contentEl)
+      .setName('Remove tags from output')
+      .setDesc('Strip #tags from the compiled document.')
+      .addToggle((toggle) =>
+        toggle.setValue(settings.removeTags).onChange((value) => {
+          settings.removeTags = value;
+          plugin.saveSettings();
+        })
+      );
+
     new Setting(contentEl).setName('Output file name').then((setting) => {
       new Setting(contentEl).then((setting) => {
         setting.addButton((btn) =>

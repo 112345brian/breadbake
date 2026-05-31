@@ -8,6 +8,11 @@ export interface BakeSettings {
   bakeEmbeds: boolean;
   bakeInList: boolean;
   convertFileLinks: boolean;
+  adjustHeadingLevels: boolean;
+  skipExcalidraw: boolean;
+  preserveInlineLinks: boolean;
+  removeTasks: boolean;
+  removeTags: boolean;
 }
 
 const DEFAULT_SETTINGS: BakeSettings = {
@@ -15,6 +20,11 @@ const DEFAULT_SETTINGS: BakeSettings = {
   bakeEmbeds: true,
   bakeInList: true,
   convertFileLinks: true,
+  adjustHeadingLevels: true,
+  skipExcalidraw: true,
+  preserveInlineLinks: true,
+  removeTasks: false,
+  removeTags: false,
 };
 
 export default class EasyBake extends Plugin {
