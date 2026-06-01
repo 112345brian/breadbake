@@ -5,6 +5,7 @@ import { ProjectBakeModal } from './ProjectBakeModal';
 import { BreadcrumbBakeModal } from './BreadcrumbBakeModal';
 import { WatchManager } from './watcher';
 import { EasyBakeApi } from './api';
+import { BreadBakeSettingsTab } from './SettingsTab';
 
 export interface BakeSettings {
   bakeLinks: boolean;
@@ -93,6 +94,7 @@ export default class EasyBake extends Plugin {
     await this.loadSettings();
     this.api = new EasyBakeApi(this);
     this.watcher = new WatchManager(this.app);
+    this.addSettingTab(new BreadBakeSettingsTab(this.app, this));
 
     this.addCommand({
       id: 'bake-file',
