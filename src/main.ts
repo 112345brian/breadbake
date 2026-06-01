@@ -1,4 +1,4 @@
-import { Plugin } from 'obsidian';
+import { Notice, Plugin } from 'obsidian';
 
 import { BakeModal } from './BakeModal';
 import { ProjectBakeModal } from './ProjectBakeModal';
@@ -71,8 +71,7 @@ const DEFAULT_SETTINGS: BakeSettings = {
 export default class EasyBake extends Plugin {
   settings: BakeSettings;
   watcher: WatchManager;
-
-  public api = new EasyBakeApi(this);
+  public api: EasyBakeApi;
 
   async loadSettings() {
     this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
@@ -92,6 +91,7 @@ export default class EasyBake extends Plugin {
 
   async onload() {
     await this.loadSettings();
+    this.api = new EasyBakeApi(this);
     this.watcher = new WatchManager(this.app);
 
     this.addCommand({
@@ -128,7 +128,7 @@ export default class EasyBake extends Plugin {
       callback: () => {
         const watched = this.watcher.list();
         if (watched.length === 0) {
-          new (require('obsidian').Notice)('No active watches.');
+          new Notice('No active watches.');
           return;
         }
         this.watcher.removeAll();
