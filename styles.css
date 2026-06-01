@@ -126,15 +126,43 @@
 .bripey-preview-entry {
 	display: flex;
 	align-items: center;
-	gap: 6px;
+	gap: 4px;
 	padding: 3px 4px;
 	border-radius: 4px;
-	cursor: pointer;
+	cursor: default;
 	transition: background 0.1s;
+	border: 1px solid transparent;
 }
 
 .bripey-preview-entry:hover {
 	background: var(--background-modifier-hover);
+}
+
+.bripey-preview-entry.bripey-dragging {
+	opacity: 0.35;
+}
+
+.bripey-preview-entry.bripey-drag-over {
+	border-top-color: var(--interactive-accent);
+}
+
+.bripey-drag-handle {
+	cursor: grab;
+	color: var(--text-faint);
+	flex-shrink: 0;
+	font-size: 1em;
+	line-height: 1;
+	padding: 0 2px;
+	user-select: none;
+}
+
+.bripey-drag-handle:active {
+	cursor: grabbing;
+}
+
+.bripey-preview-indent {
+	flex-shrink: 0;
+	display: inline-block;
 }
 
 .bripey-preview-name {
@@ -142,6 +170,7 @@
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
+	cursor: pointer;
 }
 
 .bripey-preview-badge {

@@ -32,6 +32,8 @@ export class BakeModal extends Modal {
   private previewCountEl!: HTMLElement;
   private btn!: HTMLButtonElement;
   private excluded = new Set<string>();
+  private orderedEntries: DryRunEntry[] = [];
+  private dragSrcIndex: number | null = null;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private plugin: EasyBake, private file: TFile) {
@@ -298,6 +300,13 @@ export class BakeModal extends Modal {
             const tree = buildBreadcrumbTree(this.app, this.file, new Set(), settings);
             baked = await bakeBreadcrumbTree(this.app, tree, settings, resolutions);
           } else if (this.currentMode === 'outline') {
+            // Write the current (possibly reordered) entries back to bake-outline frontmatter
+            const outlineEntries = this.orderedEntries.filter(
+              (e) => e.file.path !== this.file.path && !this.excluded.has(e.file.path)
+            );
+            await this.app.fileManager.processFrontMatter(this.file, (fm) => {
+              fm[OUTLINE_FIELD] = outlineEntries.map((e) => `[[${e.file.basename}]]`);
+            });
             const tree = buildOutlineTree(this.app, this.file);
             if (!tree) throw new Error('No bake-outline found in frontmatter.');
             baked = await bakeBreadcrumbTree(this.app, tree, settings, resolutions);
@@ -395,66 +404,123 @@ export class BakeModal extends Modal {
     this.previewCountEl.setText('Loading…');
     this.previewEl.empty();
 
-    let entries: DryRunEntry[];
+    let freshEntries: DryRunEntry[];
 
     if (this.currentMode === 'link') {
-      entries = [];
-      await traceBake(this.app, this.file, new Set(), settings, 0, null, entries);
+      freshEntries = [];
+      await traceBake(this.app, this.file, new Set(), settings, 0, null, freshEntries);
     } else if (this.currentMode === 'breadcrumb') {
       const tree = buildBreadcrumbTree(this.app, this.file, new Set(), settings);
-      entries = flattenTree(tree).map((n) => ({ file: n.file, depth: n.depth, linkedBy: null }));
+      freshEntries = flattenTree(tree).map((n) => ({ file: n.file, depth: n.depth, linkedBy: null }));
     } else {
       const tree = buildOutlineTree(this.app, this.file);
-      entries = tree
+      freshEntries = tree
         ? flattenTree(tree).map((n) => ({ file: n.file, depth: n.depth, linkedBy: null }))
         : [{ file: this.file, depth: 0, linkedBy: null }];
     }
 
-    // Dedup
+    // Dedup fresh entries
     const seen = new Set<string>();
-    const unique = entries.filter((e) => {
+    const unique = freshEntries.filter((e) => {
       if (seen.has(e.file.path)) return false;
       seen.add(e.file.path);
       return true;
     });
 
-    // Remove any excluded files that are no longer in the list
+    // Merge with user's manual ordering:
+    // - Keep order for files still present; use fresh entry for updated depth
+    // - Append newly discovered files at the end
+    const freshByPath = new Map(unique.map((e) => [e.file.path, e]));
+    const prevPaths = new Set(this.orderedEntries.map((e) => e.file.path));
+    const merged = this.orderedEntries
+      .filter((e) => freshByPath.has(e.file.path))
+      .map((e) => freshByPath.get(e.file.path)!);
+    for (const e of unique) {
+      if (!prevPaths.has(e.file.path)) merged.push(e);
+    }
+    this.orderedEntries = merged;
+
+    // Clean up excluded paths no longer in the list
     for (const path of this.excluded) {
-      if (!unique.some((e) => e.file.path === path)) this.excluded.delete(path);
+      if (!freshByPath.has(path)) this.excluded.delete(path);
     }
 
     const rootPath = this.file.path;
 
     const updateCount = () => {
-      const included = unique.filter((e) => !this.excluded.has(e.file.path)).length;
-      const totalSize = unique
-        .filter((e) => !this.excluded.has(e.file.path))
-        .reduce((s, e) => s + e.file.stat.size, 0);
-      const estWords = Math.round(totalSize / 5).toLocaleString();
-      this.previewCountEl.setText(`${included} / ${unique.length} files · ~${estWords} words`);
+      const included = this.orderedEntries.filter((e) => !this.excluded.has(e.file.path)).length;
+      const estWords = Math.round(
+        this.orderedEntries
+          .filter((e) => !this.excluded.has(e.file.path))
+          .reduce((s, e) => s + e.file.stat.size, 0) / 5
+      ).toLocaleString();
+      this.previewCountEl.setText(`${included} / ${this.orderedEntries.length} files · ~${estWords} words`);
       if (this.btn) {
         if (included === 0) disableBtn(this.btn);
         else enableBtn(this.btn);
       }
     };
 
-    for (const entry of unique) {
-      const li = this.previewEl.createDiv('bripey-preview-entry');
-      li.style.paddingLeft = `${entry.depth * 14}px`;
-
-      const nameEl = li.createEl('span', {
-        text: entry.file.basename,
-        cls: 'bripey-preview-name',
-      });
-
+    this.orderedEntries.forEach((entry, i) => {
       const isRoot = entry.file.path === rootPath;
+      const li = this.previewEl.createDiv('bripey-preview-entry');
+      if (this.excluded.has(entry.file.path)) li.addClass('bripey-excluded');
+
+      // Drag handle (non-root entries only)
+      if (!isRoot) {
+        const handle = li.createEl('span', { text: '⠿', cls: 'bripey-drag-handle' });
+        handle.setAttribute('title', 'Drag to reorder');
+
+        li.setAttribute('draggable', 'true');
+
+        li.addEventListener('dragstart', (e) => {
+          this.dragSrcIndex = i;
+          e.dataTransfer?.setData('text/plain', String(i));
+          e.dataTransfer!.effectAllowed = 'move';
+          // Defer class to let browser render the ghost image first
+          setTimeout(() => li.addClass('bripey-dragging'), 0);
+        });
+
+        li.addEventListener('dragend', () => {
+          li.removeClass('bripey-dragging');
+          this.dragSrcIndex = null;
+          this.previewEl.querySelectorAll('.bripey-drag-over')
+            .forEach((el) => el.removeClass('bripey-drag-over'));
+        });
+
+        li.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          if (this.dragSrcIndex !== null && this.dragSrcIndex !== i) {
+            li.addClass('bripey-drag-over');
+          }
+        });
+
+        li.addEventListener('dragleave', () => li.removeClass('bripey-drag-over'));
+
+        li.addEventListener('drop', (e) => {
+          e.preventDefault();
+          li.removeClass('bripey-drag-over');
+          const src = this.dragSrcIndex;
+          if (src === null || src === i) return;
+          const [dragged] = this.orderedEntries.splice(src, 1);
+          this.orderedEntries.splice(i, 0, dragged);
+          this.dragSrcIndex = null;
+          this.refreshPreview();
+        });
+      }
+
+      // Indent by depth
+      const indent = li.createEl('span', { cls: 'bripey-preview-indent' });
+      indent.style.width = `${entry.depth * 14}px`;
+
+      li.createEl('span', { text: entry.file.basename, cls: 'bripey-preview-name' });
+
       if (isRoot) {
-        li.createEl('span', { text: ' root', cls: 'bripey-preview-badge' });
+        li.createEl('span', { text: 'root', cls: 'bripey-preview-badge' });
       } else {
-        if (this.excluded.has(entry.file.path)) li.addClass('bripey-excluded');
-        li.setAttribute('role', 'button');
-        li.setAttribute('tabindex', '0');
-        const toggle = () => {
+        // Click (non-handle area) toggles excluded
+        li.addEventListener('click', (e) => {
+          if ((e.target as HTMLElement).classList.contains('bripey-drag-handle')) return;
           if (this.excluded.has(entry.file.path)) {
             this.excluded.delete(entry.file.path);
             li.removeClass('bripey-excluded');
@@ -463,11 +529,9 @@ export class BakeModal extends Modal {
             li.addClass('bripey-excluded');
           }
           updateCount();
-        };
-        li.addEventListener('click', toggle);
-        li.addEventListener('keydown', (e) => { if (e.key === ' ' || e.key === 'Enter') toggle(); });
+        });
       }
-    }
+    });
 
     updateCount();
   }
